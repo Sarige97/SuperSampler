@@ -45,10 +45,7 @@ public class IntegrationTcpTests
 
     private static void RequireSim()
     {
-        if (!SimUp)
-        {
-            throw Xunit.Sdk.SkipException.ForSkip("modbus_tcp_sim.py 未在运行：python _simulator_design/modbus_tcp_sim.py");
-        }
+        Skip.If(!SimUp, "modbus_tcp_sim.py 未在运行：python _simulator_design/modbus_tcp_sim.py");
     }
 
     // ───────────── 配置与引擎辅助 ─────────────
@@ -101,7 +98,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-01：TCP 基线类型正确性（TYPEDEMO unit 1） ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Tcp_baseline_types_decode_to_sim_values()
     {
         RequireSim();
@@ -147,7 +144,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-02：边界值（BOUNDARY unit 3） ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Boundary_values_decode_without_corruption()
     {
         RequireSim();
@@ -183,7 +180,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-04：四数据区（unit 1） ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Four_data_areas_are_readable()
     {
         RequireSim();
@@ -211,7 +208,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-05：四字序同逻辑值（unit 11-14） ─────────────
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(11, "abcd")]
     [InlineData(12, "badc")]
     [InlineData(13, "cdab")]
@@ -245,7 +242,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-07：RTU-over-TCP 三从站不串台（unit 10/11/12） ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Rtu_over_tcp_three_slaves_do_not_cross_talk()
     {
         RequireSim();
@@ -295,7 +292,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-08：大块读自动分块拼接（unit 1，区段 A 250 字） ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Large_block_read_is_chunked_and_concatenated()
     {
         RequireSim();
@@ -329,7 +326,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-11/GATE-1：写只读设备 → Failed，不自动重写 ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Write_to_readonly_device_fails()
     {
         RequireSim();
@@ -349,7 +346,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-14：写成功 + verify 回读一致 → Succeeded ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Write_with_verify_readback_succeeds()
     {
         RequireSim();
@@ -373,7 +370,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-15/GATE-1：写不应答从站 → Indeterminate，不自动重写 ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Write_to_silent_unit_is_indeterminate()
     {
         RequireSim();
@@ -394,7 +391,7 @@ public class IntegrationTcpTests
 
     // ───────────── IT-10：读不应答从站 → 持续失败 → 质量非 Good ─────────────
 
-    [Fact]
+    [SkippableFact]
     public async Task Read_from_silent_unit_never_becomes_good()
     {
         RequireSim();
