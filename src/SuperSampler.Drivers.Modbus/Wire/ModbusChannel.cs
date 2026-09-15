@@ -115,15 +115,79 @@ public sealed class ModbusChannel : IDisposable
                     ? ReadTcpResponse(unitId, txnId, timeoutMs)
                     : ReadRtuResponse(pdu[0], unitId, timeoutMs);
             }
+            catch (ModbusProtocolException)
+            {
+                // 设备明确回了异常码：链路是好的，不能断开（docs/02 第 2.2 节）
+                throw;
+            }
             catch (ModbusIoException)
             {
                 Close(); // 链路级失败：断开，下次惰性重连
                 throw;
             }
+            catch (Exception ex)
+            {
+                // ADR D37 / findings D24：socket 与串口层异常（IOException / SocketException /
+                // ObjectDisposedException…）绝不允许以裸异常逃逸到调度层——在通道边界统一
+                // 包装为 ModbusIoException 并给出分类（连接复位/中止 → 链路级；读到点超时 → 超时级），
+                // 否则上层既无法分类上报，调度器的兜底 catch 又会把它静默吞掉。
+                Close();
+                throw WrapIoFailure(ex, "通讯 IO 失败");
+            }
             finally
             {
                 if (_options.GapMs > 0) Thread.Sleep(_options.GapMs);
             }
+        }
+    }
+
+    /// <summary>把底层 IO 异常包装为带分类的 <see cref="ModbusIoException"/>（ADR D37）。</summary>
+    private static ModbusIoException WrapIoFailure(Exception ex, string what)
+        => new ModbusIoException(what + "：" + ex.Message, ex, IsTimeoutFailure(ex));
+
+    /// <summary>
+    /// 判定异常是否属于「超时」类。超时才是瞬时错误（可重试）；
+    /// 连接复位/中止/被拒、端口消失等一律是链路错误（交重连，绝不在请求层重试，docs/02 第 5.1 节）。
+    /// </summary>
+    private static bool IsTimeoutFailure(Exception exception)
+    {
+        for (var e = exception; e != null; e = e.InnerException)
+        {
+            if (e is TimeoutException) return true;
+
+            if (e is SocketException socket && (socket.SocketErrorCode is SocketError.TimedOut or SocketError.WouldBlock))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// TCP 连接是否已被对端关闭/复位（ADR D37 / findings D23）。
+    /// RST 之后 socket 往往仍「可写」，请求会被静默丢弃，读侧看到的是到点超时——
+    /// 只看超时会把「设备断电/被 RST」误报成「设备慢」。这里用标准探测：
+    /// 出错态，或「可读但 0 字节可读」（FIN/RST 后的确定特征）才算连接已断。
+    /// 慢设备只是暂时没数据，两个条件都不成立，仍按超时上报。
+    /// </summary>
+    private bool IsTcpConnectionClosed()
+    {
+        var socket = _tcp?.Client;
+        if (socket == null) return false;
+
+        try
+        {
+            if (socket.Poll(0, SelectMode.SelectError)) return true;
+            return socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0;
+        }
+        catch (SocketException)
+        {
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
         }
     }
 
@@ -206,7 +270,8 @@ public sealed class ModbusChannel : IDisposable
         catch (Exception ex)
         {
             tcp.Close();
-            throw new ModbusIoException($"连接 {_options.Host}:{_options.Port} 失败：{ex.Message}", ex);
+            // 连接被拒/地址不可达 → 链路错误；SocketError.TimedOut → 超时（ADR D37）
+            throw WrapIoFailure(ex, $"连接 {_options.Host}:{_options.Port} 失败");
         }
     }
 
@@ -403,8 +468,7 @@ public sealed class ModbusChannel : IDisposable
         var offset = 0;
         while (offset < count)
         {
-            if (!ReadOne(deadline - Environment.TickCount, out var b))
-                throw new ModbusIoException("应答超时或连接断开", isTimeout: true);
+            if (!ReadOne(deadline - Environment.TickCount, out var b)) throw ReadFailure();
 
             buffer[offset++] = b;
         }
@@ -419,14 +483,22 @@ public sealed class ModbusChannel : IDisposable
         var offset = 0;
         while (offset < count)
         {
-            if (!ReadOne(deadline - Environment.TickCount, out var b))
-                throw new ModbusIoException("应答超时或连接断开", isTimeout: true);
+            if (!ReadOne(deadline - Environment.TickCount, out var b)) throw ReadFailure();
 
             buffer[offset++] = b;
         }
 
         return buffer;
     }
+
+    /// <summary>
+    /// 读不到数据的定性（ADR D37 / findings D23）：连接已被对端关闭/复位 → 链路错误；
+    /// 连接还在、只是到点没数据 → 超时（瞬时，可重试）。
+    /// </summary>
+    private ModbusIoException ReadFailure()
+        => IsTcpConnectionClosed()
+            ? new ModbusIoException("连接已被对端关闭或复位", isTimeout: false)
+            : new ModbusIoException("应答超时或连接断开", isTimeout: true);
 
     /// <summary>读单字节；流模式轮询 DataAvailable，串口模式靠 ReadTimeout。超时返回 false。</summary>
     private bool ReadOne(int timeoutMs, out byte value)

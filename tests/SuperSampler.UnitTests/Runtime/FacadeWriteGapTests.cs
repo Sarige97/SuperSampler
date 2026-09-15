@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using SuperSampler.Abstractions.Events;
@@ -244,5 +245,69 @@ public class FacadeWriteGapTests
         Assert.Equal(5, count);
         Assert.Equal(1, link.ReadCalls);
         Assert.Empty(link.ReadReplies);
+    }
+
+    // ═══════════════ D22（ADR D36）：报警确认的公开门面通路 ═══════════════
+
+    private const string LATCH_ALARM_POINT =
+        """<Point id="al" address="40" dataType="uint16" swap="none"><Alarm id="A1" type="high" limit="10" latch="true" ackRequired="true" /></Point>""";
+
+    [Fact]
+    public async Task Gf9_acknowledge_alarm_is_public_and_rearms_latch()
+    {
+        var link = new FakeModbusLink();
+        link.SetReadData(7, DataArea.HoldingRegister, 40, 50); // 越限（limit=10）
+        using var engine = Engine(link, LATCH_ALARM_POINT);
+
+        var raised = new List<AlarmRaisedEvent>();
+        var acks = new List<AlarmAcknowledgedEvent>();
+        engine.Bus.Subscribe<AlarmRaisedEvent>(e => { lock (raised) raised.Add(e.Body); }, DeliveryMode.Inline);
+        engine.Bus.Subscribe<AlarmAcknowledgedEvent>(e => { lock (acks) acks.Add(e.Body); }, DeliveryMode.Inline);
+
+        engine.Start();
+        try
+        {
+            Assert.True(SpinWait.SpinUntil(() => { lock (raised) return raised.Count > 0; }, 6000),
+                "越限值应触发报警（驱动采样 → 报警评估）");
+
+            // 未配置/未触发的 alarmId → NotPending：不抛异常也不发事件
+            var missing = await engine.AcknowledgeAlarmAsync("d1", "al", "ghost");
+            Assert.Equal(AlarmAckOutcome.NotPending, missing.Outcome);
+            Assert.Empty(acks);
+
+            // 公开通路（此前只有反射能调到 AlarmEngine.Acknowledge，findings D22）
+            var result = await engine.AcknowledgeAlarmAsync("d1", "al", "A1", new ActingUser("op-1", "operator"));
+            Assert.Equal(AlarmAckOutcome.Acknowledged, result.Outcome);
+
+            var ack = Assert.Single(acks);
+            Assert.Equal("A1", ack.AlarmId);
+            Assert.Equal("op-1", ack.User);
+            Assert.Equal("d1", ack.DeviceId);
+            Assert.Equal("al", ack.PointId);
+
+            // 确认 → 回到可重触发：先回落到限值下（清除），再越限 → 第二次触发
+            link.SetReadData(7, DataArea.HoldingRegister, 40, 1);
+            Assert.True(SpinWait.SpinUntil(
+                    () => engine.GetValueDetail("d1", "al").Value is ushort u && u == 1, 6000),
+                "回落到限值下应被采到");
+
+            link.SetReadData(7, DataArea.HoldingRegister, 40, 50);
+            Assert.True(SpinWait.SpinUntil(() => { lock (raised) return raised.Count >= 2; }, 6000),
+                "确认后报警应可重新触发");
+        }
+        finally
+        {
+            engine.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Gf9b_acknowledge_alarm_unknown_point_throws_key_not_found()
+    {
+        var link = new FakeModbusLink();
+        using var engine = Engine(link, LATCH_ALARM_POINT);
+
+        Assert.Throws<KeyNotFoundException>(() => engine.AcknowledgeAlarmAsync("d1", "不存在", "A1").GetAwaiter().GetResult());
+        Assert.Throws<KeyNotFoundException>(() => engine.AcknowledgeAlarmAsync("不存在的设备", "al", "A1").GetAwaiter().GetResult());
     }
 }

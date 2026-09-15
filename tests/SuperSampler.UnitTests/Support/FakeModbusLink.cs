@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using SuperSampler.Drivers.Modbus;
@@ -50,6 +51,12 @@ public sealed class FakeFaultRule
     public int RandomModulo { get; set; } = 2;
     /// <summary>规则最多生效次数（默认无限）。</summary>
     public int RemainingCalls { get; set; } = int.MaxValue;
+
+    /// <summary>
+    /// 命中后抛出 <see cref="IOException"/>（模拟驱动层漏包装的裸异常，findings D24）。
+    /// 置位时 Kind/DelayMs 不再参与。
+    /// </summary>
+    public bool ThrowIo { get; set; }
 }
 
 /// <summary>
@@ -281,6 +288,12 @@ internal sealed class FakeModbusLink : IModbusLink
 
     private static ModbusReply FailBy(FakeFaultRule rule, long elapsed)
     {
+        if (rule.ThrowIo)
+        {
+            // 模拟「驱动层异常未包装、直接冒到调度层」的破坏性场景（D24 的护栏测试）
+            throw new IOException("injected io failure");
+        }
+
         return rule.Kind switch
         {
             ModbusFailureKind.Protocol => ModbusReply.Fail(ModbusFailureKind.Protocol, rule.ExceptionCode,

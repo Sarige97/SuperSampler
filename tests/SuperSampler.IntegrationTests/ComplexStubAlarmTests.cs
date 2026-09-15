@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using SuperSampler.Abstractions.Events;
@@ -106,9 +105,10 @@ public sealed class ComplexStubAlarmTests
             await Task.Delay(900);
             Assert.Equal(1, raised.Count);
 
-            // ⑥ 确认：框架内部有 Acknowledge，但 SamplerEngine/IDeviceManager/IModbusDebugTool 都没有公开通路
-            //    （findings F6）——这里用反射直接调 AlarmEngine.Acknowledge，把「确认 → 重新武装」钉死。
-            AcknowledgeAlarmViaReflection(engine, "env", "env.limit", "A-TEMP", "op-ac");
+            // ⑥ 确认：走公开门面（ADR D36；修复前只能反射调 AlarmEngine.Acknowledge，findings D22）
+            var ackResult = await engine.AcknowledgeAlarmAsync("env", "env.limit", "A-TEMP",
+                new ActingUser("op-ac", "Local"));
+            Assert.Equal(AlarmAckOutcome.Acknowledged, ackResult.Outcome);
             Assert.True(await acked.WaitCountAsync(1, 2000), "确认应发 AlarmAcknowledgedEvent");
             var ackEvent = acked.Items.Single();
             Assert.Equal("A-TEMP", ackEvent.AlarmId);
@@ -124,27 +124,6 @@ public sealed class ComplexStubAlarmTests
             await engine.SetValueAsync("env", "env.limit", Neutral);
             engine.Dispose();
         }
-    }
-
-    /// <summary>
-    /// 反射调用 Scheduler 内部 AlarmEngine.Acknowledge（public API 未暴露，见 findings F6）。
-    /// </summary>
-    private static void AcknowledgeAlarmViaReflection(SamplerEngine engine, string deviceId, string pointId,
-        string alarmId, string user)
-    {
-        var schedulerField = typeof(SamplerEngine).GetField("_scheduler", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.True(schedulerField != null, "SamplerEngine._scheduler 字段不存在（框架内部结构变化）");
-        var scheduler = schedulerField!.GetValue(engine);
-        Assert.NotNull(scheduler);
-
-        var alarmField = scheduler!.GetType().GetField("_alarms", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.True(alarmField != null, "Scheduler._alarms 字段不存在（框架内部结构变化）");
-        var alarmEngine = alarmField!.GetValue(scheduler);
-        Assert.NotNull(alarmEngine);
-
-        var method = alarmEngine!.GetType().GetMethod("Acknowledge", BindingFlags.Public | BindingFlags.Instance);
-        Assert.True(method != null, "AlarmEngine.Acknowledge 不存在（框架内部结构变化）");
-        method!.Invoke(alarmEngine, new object[] { deviceId, pointId, alarmId, user });
     }
 
     // ─────────────────────── C3-2：坏值期间挂起（不断言误报） ───────────────────────

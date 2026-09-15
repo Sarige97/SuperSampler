@@ -77,6 +77,66 @@ public class ExpressionEvaluatorTests
 
         Assert.Equal(15.0, Eval("P('a/b') * 4 - 1", points), 6);
     }
+
+    // ─────────────── D21（ADR D35）：P('id') 对所有数值类型统一取 double ───────────────
+
+    [Theory]
+    [InlineData(typeof(float), 2.5f, 3.5)]     // float32 点解出 float
+    [InlineData(typeof(short), (short)-3, -2.0)] // int16 点解出 short
+    [InlineData(typeof(int), 7, 8.0)]          // int32
+    [InlineData(typeof(uint), 4000000000u, 4000000001.0)] // uint32（超 int 范围）
+    [InlineData(typeof(ushort), (ushort)65535, 65536.0)]  // uint16
+    [InlineData(typeof(long), -5000000000L, -4999999999.0)] // int64
+    [InlineData(typeof(ulong), 18446744073709551615UL, 1.8446744073709552E19)] // uint64
+    [InlineData(typeof(byte), (byte)200, 201.0)]
+    public void P_reference_accepts_every_numeric_type(Type type, object value, double expected)
+    {
+        var points = new Func<string, PointValue?>(_ => PointValue.Good(value, DateTimeOffset.UtcNow));
+
+        Assert.IsType(type, value); // 钉死本行覆盖的箱内类型（float32 出 float、int16 出 short…）
+        Assert.Equal(expected, Eval("P('x') + 1", points), 6);
+    }
+
+    [Fact]
+    public void P_reference_accepts_decimal_value()
+    {
+        // decimal 无法写进 InlineData 字面量，单独一例
+        var points = new Func<string, PointValue?>(_ => PointValue.Good(1.5m, DateTimeOffset.UtcNow));
+
+        Assert.Equal(2.5, Eval("P('x') + 1", points), 6);
+    }
+
+    [Fact]
+    public void P_reference_accepts_double_from_scaled_point()
+    {
+        // 带 Scale 的点（float32 缩放后是 double）：修复前就可用，这里锁定不回归
+        var points = new Func<string, PointValue?>(_ => PointValue.Good(3.14, DateTimeOffset.UtcNow));
+
+        Assert.Equal(4.14, Eval("P('x') + 1", points), 6);
+    }
+
+    [Fact]
+    public void P_reference_of_string_or_raw_point_is_nan()
+    {
+        // 字符串点与 raw 点（ushort[]）不是数值，参与算术 → NaN（不可用）
+        var text = new Func<string, PointValue?>(_ => PointValue.Good("abc", DateTimeOffset.UtcNow));
+        var raw = new Func<string, PointValue?>(_ => PointValue.Good(new ushort[] { 1, 2 }, DateTimeOffset.UtcNow));
+        var boolean = new Func<string, PointValue?>(_ => PointValue.Good(true, DateTimeOffset.UtcNow));
+
+        Assert.True(double.IsNaN(Eval("P('x') + 1", text)));
+        Assert.True(double.IsNaN(Eval("P('x') + 1", raw)));
+        Assert.True(double.IsNaN(Eval("P('x') + 1", boolean))); // bool 是离散量，不算数值
+    }
+
+    [Fact]
+    public void P_reference_of_bad_quality_point_is_nan()
+    {
+        // 坏值仍判不可用（不管箱内是不是数值）
+        var points = new Func<string, PointValue?>(_ =>
+            PointValue.Bad("ss.reason.comm", DateTimeOffset.UtcNow, 12.0));
+
+        Assert.True(double.IsNaN(Eval("P('x') + 1", points)));
+    }
 }
 
 /// <summary>脚本执行器（Jint ES5.1）测试：脚本求值、参数/点位注入、超时兜底。</summary>

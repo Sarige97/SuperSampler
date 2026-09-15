@@ -22,6 +22,10 @@ public sealed class DriverRetryTests : IDisposable
     private readonly Thread _server;
     private readonly List<byte[]> _requests = new();
     private readonly Queue<Func<byte[], byte[]?>> _script = new();
+
+    /// <summary>与脚本同序的「读请求后断开」标记：true=RST（Linger 0），false=FIN。</summary>
+    private readonly Queue<bool> _closers = new();
+
     private readonly object _gate = new();
     private volatile bool _running = true;
 
@@ -41,6 +45,19 @@ public sealed class DriverRetryTests : IDisposable
     private void Reply(Func<byte[], byte[]?> responder)
     {
         lock (_gate) _script.Enqueue(responder);
+    }
+
+    /// <summary>
+    /// 排一条「读到请求后按指定方式断开」的脚本（findings D23/D24）：
+    /// rst=true 用 Linger(0) 触发 RST，false 用正常关闭（FIN）。responder 可为 null（不应答直接断开）。
+    /// </summary>
+    private void ReplyAndClose(Func<byte[], byte[]?>? responder, bool rst)
+    {
+        lock (_gate)
+        {
+            _script.Enqueue(responder ?? (_ => null));
+            _closers.Enqueue(rst);
+        }
     }
 
     private static byte[]? Exception(byte code) => new byte[] { 0x80 | 0x06, code };
@@ -82,29 +99,43 @@ public sealed class DriverRetryTests : IDisposable
                     if (pdu.Length > 0 && !TryReadExact(stream, pdu, pdu.Length)) break;
 
                     Func<byte[], byte[]?>? responder;
+                    bool? closeWithRst;
                     lock (_gate)
                     {
                         _requests.Add(pdu);
                         responder = _script.Count > 0 ? _script.Dequeue() : null;
+                        closeWithRst = _closers.Count > 0 ? _closers.Dequeue() : (bool?)null;
                     }
 
-                    if (responder == null) continue;   // 不应答 → 主站超时
-                    var response = responder(pdu);
-                    if (response == null) continue;
+                    if (responder == null && closeWithRst == null) continue;   // 不应答 → 主站超时
 
-                    var frame = new byte[7 + response.Length];
-                    Array.Copy(header, frame, 6);                    // 回显事务号/协议号
-                    frame[4] = (byte)((response.Length + 1) >> 8);
-                    frame[5] = (byte)((response.Length + 1) & 0xFF);
-                    frame[6] = header[6];                            // 回显单元号
-                    Array.Copy(response, 0, frame, 7, response.Length);
-                    try
+                    if (responder != null)
                     {
-                        stream.Write(frame, 0, frame.Length);
-                        stream.Flush();
+                        var response = responder(pdu);
+                        if (response != null)
+                        {
+                            var frame = new byte[7 + response.Length];
+                            Array.Copy(header, frame, 6);                    // 回显事务号/协议号
+                            frame[4] = (byte)((response.Length + 1) >> 8);
+                            frame[5] = (byte)((response.Length + 1) & 0xFF);
+                            frame[6] = header[6];                            // 回显单元号
+                            Array.Copy(response, 0, frame, 7, response.Length);
+                            try
+                            {
+                                stream.Write(frame, 0, frame.Length);
+                                stream.Flush();
+                            }
+                            catch (IOException)
+                            {
+                                break;
+                            }
+                        }
                     }
-                    catch (IOException)
+
+                    if (closeWithRst.HasValue)
                     {
+                        // RST：Linger(0) + 关闭；FIN：普通关闭。后续请求由主站自行重连
+                        if (closeWithRst.Value) client.Client.LingerState = new LingerOption(true, 0);
                         break;
                     }
                 }
@@ -240,6 +271,60 @@ public sealed class DriverRetryTests : IDisposable
         Assert.False(reply.Success);
         Assert.Equal(ModbusFailureKind.Protocol, reply.Kind); // 异常码 → 协议错，与超时分开上报
         Assert.Equal(0x02, reply.ExceptionCode);
+    }
+
+    // ─────────────── D23（ADR D37）：连接复位/关闭 → 链路错误，不是超时 ───────────────
+
+    [Fact]
+    public void Connection_reset_after_request_is_reported_as_link_down()
+    {
+        // 对端读到请求后 RST：socket 仍「可写」，读侧可能既写失败也可能等到超时。
+        // 修复前后者会误报 MODBUS.TIMEOUT（宿主无法区分「设备断电」与「设备慢」）。
+        ReplyAndClose(null, rst: true);
+
+        var reply = WriteWith(retries: 0, timeoutMs: 600);
+
+        Assert.False(reply.Success);
+        Assert.Equal(ModbusFailureKind.LinkDown, reply.Kind);
+        Assert.Equal(1, RequestCount); // 损坏的链路不再重试（一次失败只交给一层）
+    }
+
+    [Fact]
+    public void Graceful_peer_close_is_reported_as_link_down()
+    {
+        // 对端读到请求后正常关闭（FIN）：连接已不可用，同样归链路错误
+        ReplyAndClose(null, rst: false);
+
+        var reply = WriteWith(retries: 0, timeoutMs: 600);
+
+        Assert.False(reply.Success);
+        Assert.Equal(ModbusFailureKind.LinkDown, reply.Kind);
+    }
+
+    [Fact]
+    public void Raw_io_exception_never_escapes_the_driver()
+    {
+        // D24：socket 层异常必须在通道边界被包装为 ModbusIoException 并给出分类，
+        // 绝不以裸 IOException 冒到调度层（否则调度兜底 catch 会静默吞掉）。
+        ReplyAndClose(null, rst: true);
+
+        var reply = WriteWith(retries: 0, timeoutMs: 600); // 不抛异常即为通过
+
+        Assert.False(reply.Success);
+        Assert.False(string.IsNullOrEmpty(reply.Message));
+        Assert.NotEqual(ModbusFailureKind.None, reply.Kind);
+    }
+
+    [Fact]
+    public void Silent_but_open_connection_is_still_a_timeout()
+    {
+        // 反向锁定：设备只是慢/不应答（连接仍在）→ 仍是超时（瞬时），
+        // 不能因为修 D23 就把所有超时都改判成链路错
+        Reply(_ => null);
+
+        var reply = WriteWith(retries: 0, timeoutMs: 500);
+
+        Assert.Equal(ModbusFailureKind.Timeout, reply.Kind);
     }
 
     public void Dispose()

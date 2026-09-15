@@ -461,14 +461,11 @@ public sealed class ComplexStubAcquisitionTests
     }
 
     [SkippableFact]
-    public async Task C1_PointUnitIdOverride_OnDemandHonoured_PollingIgnores_KnownGap()
+    public async Task C1_PointUnitIdOverride_AppliesToPollingAndOnDemand()
     {
-        // 框架现状（findings F2，见最终报告）：
-        //  · TriggerReadAsync / 写管道用 point.UnitId → 点位级 unitId 覆盖生效；
-        //  · 轮询路径 Scheduler.ReadWindow(...) 固定传 device.UnitId，MergeStandalone 又只按 area 合并
-        //    → 点位级 unitId 在轮询中被忽略（网关下多从站会读错从站）。
-        // 本用例把两条路径的现状都钉死：onDemand 点走 TriggerRead 验证覆盖生效；
-        // 轮询点则拿到「从设备声明的 unit 读来、按覆盖点的字序解出的错值」。
+        // ADR D33（findings D19）：点位级 unitId 决定该点位属于哪个从站，轮询与按需两条路径都必须遵守。
+        // 设备声明 unit 7（WO-ABCD），两个点都覆盖 unitId="8"（WO-BADC）+ swap="badc"。
+        // 修复前轮询固定用 device.UnitId → 从 unit 7 读、按 BADC 解码 → 得到 197391.83 的错值且质量仍是 Good。
         _stub.RequireStub();
         _stub.RequireSimLog();
 
@@ -493,17 +490,15 @@ public sealed class ComplexStubAcquisitionTests
         {
             IDeviceManager m = engine;
 
-            // 轮询点：请求实际发往 unit 7（设备声明），用 BADC 字序解 ABCD 原始字 → 得到错值；
-            // 若覆盖生效（读 unit 8）则应为 3.14
+            // 轮询点：按点位自身 unitId 发往 unit 8，解出真实值 3.14
             var polled = await ComplexStubFixture.WaitGoodAsync(m, "wo", "np.f32");
-            Assert.NotEqual(3.14f, F.GetAs<float>(polled));
-            Assert.Equal(197391.83f, F.GetAs<float>(polled), 1);
+            Assert.Equal(3.14f, F.GetAs<float>(polled), 5);
 
             await Task.Delay(400);
-            Assert.True(_stub.CountSimLogLines(_stub.SimPortP3, 7) > unit7Before, "轮询点应落在设备声明的 unit 7 上");
-            Assert.Equal(unit8Before, _stub.CountSimLogLines(_stub.SimPortP3, 8)); // 轮询完全没有碰 unit 8
+            Assert.True(_stub.CountSimLogLines(_stub.SimPortP3, 8) > unit8Before, "轮询点应发往点位声明的 unit 8");
+            Assert.Equal(unit7Before, _stub.CountSimLogLines(_stub.SimPortP3, 7)); // 不再误读设备声明的 unit 7
 
-            // onDemand + TriggerRead：点位级 unitId 覆盖生效 → 从 unit 8 读回 3.14
+            // onDemand + TriggerRead：同一条点位级 unitId 覆盖
             var triggered = await ((IModbusDebugTool)engine).TriggerReadAsync("wo", "od.f32");
             Assert.Equal(3.14f, F.GetAs<float>(triggered), 5);
             Assert.True(_stub.CountSimLogLines(_stub.SimPortP3, 8) > unit8Before,
@@ -515,16 +510,15 @@ public sealed class ComplexStubAcquisitionTests
         }
     }
 
-    // ─────────────────────── C1-6b：设备级 swap 被解析但未生效（findings F1） ───────────────────────
+    // ─────────────────────── C1-6b：设备级 swap 生效（D18 / ADR D38） ───────────────────────
 
     [SkippableFact]
-    public async Task C1_DeviceLevelSwap_ParsedButNeverApplied_KnownGap()
+    public async Task C1_DeviceLevelSwap_AppliesToPointsWithoutExplicitSwap()
     {
         // 测试计划（_testplan/integration-tests.md 场景 5）的口径是「四台 device 各自 swap」：
         // 点位不写 swap，由所属设备的 swap 决定字序。
-        // 现状（findings F1）：Device@swap 被解析进 DeviceConfig.Swap，但加载器/注册表从未把它
-        // 落到点位上（RuntimePoint 注释声称"已在配置解析阶段写入 source.Swap"，实际没有）——
-        // 点位只能拿到 PointSet@Defaults 或 Global 的默认值（Global 默认 CDAB）。
+        // 修复前 Device@swap 被解析进 DeviceConfig.Swap 却从不参与点位兜底链（findings D18）：
+        // 点位只能拿到 Global 默认 CDAB，于是 3.14 的 BADC 原始字被解成 -490.5645。
         _stub.RequireStub();
 
         // unit 8 = WO-BADC：原始字按 BADC 排布。设备声明 swap="badc"。
@@ -536,17 +530,16 @@ public sealed class ComplexStubAcquisitionTests
                   "</SamplerConfig>";
 
         var config = _stub.LoadConfig(xml);
-        Assert.Equal(SwapMode.Byte, config.Devices.Single().Swap);                       // 属性确实被解析
-        Assert.Equal(SwapMode.Word, config.PointSets.Single().Points.Single().Swap);     // 但点位拿到的是 Global 默认 CDAB
+        Assert.Equal(SwapMode.Byte, config.Devices.Single().Swap);                            // 设备级属性已解析
+        Assert.False(config.PointSets.Single().Points.Single().HasSwapDeclared);              // 点位未声明 → 待设备兜底
 
         using var engine = new SamplerEngine(config);
         engine.Start();
         try
         {
             var value = await ComplexStubFixture.WaitGoodAsync((IDeviceManager)engine, "wob", "f32");
-            // 若设备级 swap 生效应为 3.14；现状是按 CDAB 解 BADC 原始字 → -490.5645
-            Assert.Equal(-490.5645f, F.GetAs<float>(value), 1);
-            Assert.NotEqual(3.14f, F.GetAs<float>(value));
+            // 设备级 swap 生效：按 BADC 解码 → 3.14（而不是 Global 缺省 CDAB 解出的 -490.56）
+            Assert.Equal(3.14f, F.GetAs<float>(value), 5);
         }
         finally
         {
@@ -554,31 +547,25 @@ public sealed class ComplexStubAcquisitionTests
         }
     }
 
-    // ─────────────────────── C1-6c：多字 BCD / datetime 的配置限制（findings F4） ───────────────────────
+    // ─────────────────────── C1-6c：多字 BCD / datetime 轮询解出完整值（D20 / ADR D34） ───────────────────────
 
     [SkippableFact]
-    public async Task C1_MultiWordBcdAndDateTime_OnlyViaSlices_KnownGap()
+    public async Task C1_MultiWordBcdAndDateTime_DecodeWholeValueWhilePolling()
     {
-        // 现状（findings F4）：bcd(8) 占 2 字、datetime(plc6) 占 6 字，但 EffectiveLength 对这两类都返回 1，
-        // 而 CGV-8 又禁止显式写 length（只放行 string/raw）→ 轮询路径只读到第 1 个字，BCD/datetime 必然错值；
-        // 唯一可用的通路是 <Slices>（ReadWindow 明确跳过 Slices 点位，只有 TriggerRead/写管道支持）。
+        // ADR D34：bcd 按 Bcd@digits、datetime 按 DateTime@format 推导有效字长，
+        // 轮询路径据此切片，不再只读第 1 个字（findings D20：
+        // 修复前 BCD 只解出 1234、datetime 月/日被兜底成 1，且质量仍是 Good）。
         _stub.RequireStub();
 
-        // 轮询点（无 Slices、无 length —— CGV-8 不允许给 bcd/datetime 写 length）：
-        // BCD(8) 只读到高字 0x1234 → 1234；datetime(plc6) 只读到年，月日被兜底成 1
+        // 与修复前同样的点位：不写 length（CGV-8 只放行 string/raw），也不靠 <Slices>
         var polled = string.Concat(
             ComplexStubFixture.Point("dt.poll", 78, "datetime", "area=\"holding\""),
             ComplexStubFixture.Point("bcd.poll", 76, "bcd", "area=\"holding\"", "<Bcd digits=\"8\" />"));
-        var sliced = string.Concat(
-            ComplexStubFixture.Point("dt.slice", 78, "datetime", "area=\"holding\" length=\"6\"",
-                "<Slices><Slice address=\"78\" length=\"6\" /></Slices>"),
-            ComplexStubFixture.Point("bcd.slice", 76, "bcd", "area=\"holding\" length=\"2\"",
-                "<Bcd digits=\"8\" /><Slices><Slice address=\"76\" length=\"2\" /></Slices>"));
 
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" + GlobalFast +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("wo", "p3", 7, "ps") + "</Devices>" +
-                  "<PointSets><PointSet id=\"ps\"><Defaults swap=\"abcd\" /><Points>" + polled + sliced +
+                  "<PointSets><PointSet id=\"ps\"><Defaults swap=\"abcd\" /><Points>" + polled +
                   "</Points></PointSet></PointSets></SamplerConfig>";
 
         using var engine = new SamplerEngine(_stub.LoadConfig(xml));
@@ -586,22 +573,17 @@ public sealed class ComplexStubAcquisitionTests
         try
         {
             IDeviceManager m = engine;
-            var debug = (IModbusDebugTool)engine;
 
-            // 轮询（无 Slices）：只读到第 1 个字 → 值错但质量仍是 Good（静默错值）
-            var polledBcd = await ComplexStubFixture.WaitGoodAsync(m, "wo", "bcd.poll");
-            Assert.Equal(1234L, F.GetAs<long>(polledBcd));
+            // BCD(8)：2 个寄存器 → 12345678（修复前只读首字得 1234）
+            var bcd = await ComplexStubFixture.WaitGoodAsync(m, "wo", "bcd.poll");
+            Assert.Equal(12345678L, F.GetAs<long>(bcd));
 
-            var polledDt = await ComplexStubFixture.WaitGoodAsync(m, "wo", "dt.poll");
-            var dt = F.GetAs<DateTime>(polledDt);
-            Assert.Equal(1, dt.Month);   // plc6 的第 2 个字（月）根本没被读到，走兜底值 1
-            Assert.Equal(1, dt.Day);
-
-            // TriggerRead + Slices：读满 2/6 个字 → 正确值
-            Assert.Equal(12345678L, F.GetAs<long>(await debug.TriggerReadAsync("wo", "bcd.slice")));
-            var slicedDt = F.GetAs<DateTime>(await debug.TriggerReadAsync("wo", "dt.slice"));
-            Assert.Equal(DateTime.Now.Year, slicedDt.Year);
-            Assert.InRange(slicedDt.Month, 1, 12);
+            // datetime(plc6)：6 个字 → 年月日时分秒齐全（桩每秒刷新为当前时间）
+            var dt = F.GetAs<DateTime>(await ComplexStubFixture.WaitGoodAsync(m, "wo", "dt.poll"));
+            Assert.Equal(DateTime.Now.Year, dt.Year);
+            Assert.Equal(DateTime.Now.Month, dt.Month);
+            Assert.Equal(DateTime.Now.Day, dt.Day);
+            Assert.InRange(dt.Hour, 0, 23);
         }
         finally
         {
@@ -772,12 +754,12 @@ public sealed class ComplexStubAcquisitionTests
             var calc = await ComplexStubFixture.WaitValueAsync(m, "wo", "calc.gain", (double v) => Math.Abs(v - 7.28) < 0.0001);
             Assert.Equal(7.28, calc, 4);
 
-            // findings F5：P() 只认「箱内恰好是 double」的点 —— float32 点解出的 float 会被
-            // TryGetValue<double> 判为类型不符 → NaN → 计算点质量 Bad(ss.reason.calculate)。
-            // 这里把这个现状钉死（整数点/float32 点/BCD 点同样中招；float64 点或带 Scale 的点才可用）。
-            var bad = m.GetValueDetail("wo", "calc.f32direct");
-            Assert.Equal(PointQuality.Bad, bad.Quality);
-            Assert.Equal("ss.reason.calculate", bad.Reason);
+            // D21（ADR D35）：P() 对数值类型统一转 double —— float32 点解出的 float 同样可用
+            // （修复前 TryGetValue<double> 判类型不符 → NaN → Bad(ss.reason.calculate)）
+            var direct = await ComplexStubFixture.WaitValueAsync(m, "wo", "calc.f32direct",
+                (double v) => Math.Abs(v - 4.14) < 0.0001);
+            Assert.Equal(4.14, direct, 4);
+            Assert.Equal(PointQuality.Good, m.GetValueDetail("wo", "calc.f32direct").Quality);
         }
         finally
         {

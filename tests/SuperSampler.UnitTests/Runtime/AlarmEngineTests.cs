@@ -210,4 +210,61 @@ public class AlarmEngineTests
         engine.Evaluate(point, Good(60)); // 确认后允许再次激活
         Assert.Equal(2, _raised.Count);
     }
+
+    // ─────────────── D22（ADR D36）：确认的可判定语义 ───────────────
+
+    [Fact]
+    public void Try_acknowledge_reports_whether_state_existed_and_is_idempotent()
+    {
+        var engine = NewEngine();
+        var point = Point(c => c.Alarms.Add(new AlarmConfig
+        {
+            Id = "alarm1", Type = "high", Limit = 50, Latch = true, AckRequired = true,
+        }));
+
+        // 从未评估过 → 无状态记录：返回 false 且不发事件（确认一个不存在的报警不算失败）
+        Assert.False(engine.TryAcknowledge("dev1", "p", "alarm1", "op0"));
+        Assert.Empty(_acked);
+
+        engine.Evaluate(point, Good(60));   // 激活（AckPending = true）
+        engine.Evaluate(point, Good(40));   // 清除但锁存：未确认前不重触发
+        engine.Evaluate(point, Good(60));
+        Assert.Single(_raised);
+
+        Assert.True(engine.TryAcknowledge("dev1", "p", "alarm1", "op1"));
+        var ack = Assert.Single(_acked);
+        Assert.Equal("alarm1", ack.AlarmId);
+        Assert.Equal("op1", ack.User);
+        Assert.Equal("dev1", ack.DeviceId);
+        Assert.Equal("p", ack.PointId);
+
+        engine.Evaluate(point, Good(60));   // 确认后重新武装 → 可重触发
+        Assert.Equal(2, _raised.Count);
+
+        // 重复确认：状态仍在 → 仍返回 true 并再发一条确认事件（与 Acknowledge 语义一致）
+        Assert.True(engine.TryAcknowledge("dev1", "p", "alarm1", "op2"));
+        Assert.Equal(2, _acked.Count);
+    }
+
+    [Fact]
+    public void Acknowledge_accepts_default_alarm_id_derived_from_point_and_type()
+    {
+        // D9 的键口径：Alarm@id 缺省时 AlarmId = "pointId#type"，确认必须用同一个键
+        var engine = NewEngine();
+        var point = Point(c => c.Alarms.Add(new AlarmConfig { Type = "high", Limit = 10, Latch = true }));
+
+        engine.Evaluate(point, Good(11));
+        Assert.Equal("p#high", _raised[0].AlarmId);
+
+        engine.Evaluate(point, Good(5));    // 回落到限值下 → 清除（锁存待确认）
+        Assert.Single(_cleared);
+        engine.Evaluate(point, Good(11));   // 未确认前不得重触发
+        Assert.Single(_raised);
+
+        Assert.True(engine.TryAcknowledge("dev1", "p", "p#high", "op"));
+        Assert.Single(_acked);
+
+        engine.Evaluate(point, Good(11));   // 确认后允许重新触发
+        Assert.Equal(2, _raised.Count);
+    }
 }

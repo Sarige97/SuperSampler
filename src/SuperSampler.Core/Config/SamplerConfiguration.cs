@@ -183,6 +183,13 @@ public sealed class PointConfig
     public RuntimeDataType DataType { get; set; } = RuntimeDataType.UInt16;
     public SwapMode Swap { get; set; } = SwapMode.Word;
 
+    /// <summary>
+    /// 点位是否**显式声明**了 swap（Point@swap / PointSet/Defaults@swap / 块内点位随 Block@swap）。
+    /// false 表示「待兜底」：运行期按所属设备解析为 <see cref="DeviceConfig.Swap"/>（→ Global@swap）。
+    /// 之所以不在解析期固化设备级兜底：同一个 PointSet 可被多个设备共用，而各设备字序可以不同（ADR D38）。
+    /// </summary>
+    public bool HasSwapDeclared { get; set; }
+
     public int? Bit { get; set; }
 
     /// <summary>位域，形如 4-7（含端点）；null 表示不取位域。</summary>

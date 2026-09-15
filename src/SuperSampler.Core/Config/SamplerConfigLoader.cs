@@ -72,9 +72,10 @@ public static partial class SamplerConfigLoader
             errors.Add($"schemaVersion \"{schemaVersion}\" 不受支持（当前支持 3.x）");
         }
 
-        LoadI18n(root, baseDirectory, config.I18n);
-        LoadMeta(root, config.Meta, config.I18n);
+        // ADR D39：i18n 要按 Global@language 选文件，故 Global 必须先于 I18n 加载
         LoadGlobal(root, config.Global);
+        LoadI18n(root, baseDirectory, config.I18n, config.Global);
+        LoadMeta(root, config.Meta, config.I18n);
         LoadScanGroups(root, config.ScanGroups, errors);
         LoadTransports(root, config.Transports, errors);
 
@@ -185,12 +186,40 @@ public static partial class SamplerConfigLoader
 
     // ─────────────── i18n ───────────────
 
-    private static void LoadI18n(XElement root, string baseDirectory, I18nCatalog catalog)
+    private static void LoadI18n(XElement root, string baseDirectory, I18nCatalog catalog, GlobalOptions global)
     {
         var i18n = root.Element("I18n");
         if (i18n == null) return;
 
-        foreach (var file in i18n.Elements("Files").Elements("File"))
+        var files = i18n.Elements("Files").Elements("File").ToList();
+        if (files.Count == 0) return;
+
+        // ADR D39：只加载与 Global@language 匹配且**磁盘上确实存在**的语言文件；
+        // 该语言一个都没有时，用 Global@fallbackLanguage 兜底；仍然没有才退回"全部加载"
+        // （兼容只写一个文件、或 @lang 与语言码不一致的老配置）。文件缺失本身仍静默跳过。
+        var primary = (global.Language ?? string.Empty).Trim();
+        var fallback = (global.FallbackLanguage ?? string.Empty).Trim();
+
+        var available = files
+            .Select(f => new { Element = f, Lang = LangOf(f), Path = FullPathOf(f, baseDirectory) })
+            .Where(x => x.Path != null && File.Exists(x.Path))
+            .ToList();
+
+        var selected = available
+            .Where(x => string.Equals(x.Lang, primary, StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Element)
+            .ToList();
+        if (selected.Count == 0)
+        {
+            selected = available
+                .Where(x => string.Equals(x.Lang, fallback, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Element)
+                .ToList();
+        }
+
+        if (selected.Count == 0) selected = files;
+
+        foreach (var file in selected)
         {
             var path = (string?)file.Attribute("path");
             if (string.IsNullOrEmpty(path)) continue;
@@ -223,6 +252,16 @@ public static partial class SamplerConfigLoader
 
     // ─────────────── 全局 ───────────────
 
+    private static string? FullPathOf(XElement file, string baseDirectory)
+    {
+        var path = (string?)file.Attribute("path");
+        if (string.IsNullOrEmpty(path)) return null;
+        return Path.IsPathRooted(path) ? path : Path.Combine(baseDirectory, path);
+    }
+
+    private static string LangOf(XElement file)
+        => ((string?)file.Attribute("lang") ?? string.Empty).Trim();
+
     private static void LoadGlobal(XElement root, GlobalOptions global)
     {
         var g = root.Element("Global");
@@ -231,6 +270,10 @@ public static partial class SamplerConfigLoader
             global.Language = (string?)g.Attribute("language") ?? global.Language;
             global.FallbackLanguage = (string?)g.Attribute("fallbackLanguage") ?? global.FallbackLanguage;
             global.TimeZone = (string?)g.Attribute("timeZone") ?? global.TimeZone;
+
+            // findings W37 / ADR D38：nullText 与 swap 此前声明但从未读取
+            global.NullText = (string?)g.Attribute("nullText") ?? global.NullText;
+            global.DefaultSwap = ParseSwap((string?)g.Attribute("swap")) ?? global.DefaultSwap;
 
             var polling = g.Element("Polling");
             if (polling != null)

@@ -32,9 +32,9 @@ public class SchedulerGapTests : IDisposable
 
     public void Dispose() => _engine?.Dispose();
 
-    private SamplerEngine Start(string devices, string pointSets, string quality = "keepLast", string scanGroups = DEFAULT_GROUPS, string onCommError = "bad", string globalExtra = "")
+    private SamplerEngine Start(string devices, string pointSets, string quality = "keepLast", string scanGroups = DEFAULT_GROUPS, string onCommError = "bad", string globalExtra = "", string globalAttrs = "")
     {
-        var xml = string.Format(TEMPLATE, quality, scanGroups, devices, pointSets, onCommError, globalExtra);
+        var xml = string.Format(TEMPLATE, quality, scanGroups, devices, pointSets, onCommError, globalExtra, globalAttrs);
         var config = SamplerConfigLoader.Load(XDocument.Parse(xml), Directory.GetCurrentDirectory());
         _engine = new SamplerEngine(config, new Dictionary<string, IModbusLink> { ["tcp1"] = _link });
         _engine.Bus.Subscribe<PointValueChangedEvent>(e => _valueEvents.Add(e.Body), DeliveryMode.Inline);
@@ -388,11 +388,141 @@ public class SchedulerGapTests : IDisposable
         Assert.Equal(11.0, Convert.ToDouble(alarm.Value));
     }
 
+    // ─────────────── D19（ADR D33）：点位级 unitId 参与轮询分组 ───────────────
+
+    [Fact]
+    public void Gs14_points_with_different_unit_ids_go_to_separate_requests_on_their_own_slave()
+    {
+        // unit 1 与 unit 2 各有一个点，地址相邻（0 / 1）：合并前是一个请求，修复后必须拆成两个
+        _link.SetReadData(1, DataArea.HoldingRegister, 0, 11);
+        _link.SetReadData(2, DataArea.HoldingRegister, 1, 22);
+
+        Start(DEV_D1, PS_TWO_UNITS);
+
+        Thread.Sleep(400);
+
+        var unit1 = Reads(1);
+        var unit2 = Reads(2);
+        Assert.Single(unit1);                       // 两个点不合并到同一请求
+        Assert.Equal(0, unit1[0].Address);
+        Assert.Equal(1, unit1[0].Count);
+        Assert.Single(unit2);                       // 覆盖点发往自己的从站
+        Assert.Equal(1, unit2[0].Address);
+        Assert.Equal(1, unit2[0].Count);
+
+        Assert.Equal((ushort)11, Assert.IsType<ushort>(_engine!.GetValueDetail("d1", "p1").Value));
+        Assert.Equal((ushort)22, Assert.IsType<ushort>(_engine!.GetValueDetail("d1", "p2").Value));
+    }
+
+    [Fact]
+    public void Gs14b_pointset_defaults_unit_id_also_selects_the_slave()
+    {
+        // PointSet/Defaults@unitId 是点位级覆盖的缺省形态，轮询同样必须按它下发
+        _link.SetReadData(2, DataArea.HoldingRegister, 0, 33);
+
+        Start(DEV_D1, PS_DEFAULTS_UNIT2);
+
+        Thread.Sleep(400);
+
+        Assert.Empty(Reads(1));
+        var unit2 = Reads(2);
+        Assert.Single(unit2);
+        Assert.Equal(0, unit2[0].Address);
+        Assert.Equal((ushort)33, Assert.IsType<ushort>(_engine!.GetValueDetail("d1", "p1").Value));
+    }
+
+    // ─────────────── D18（ADR D38）：设备级 swap 生效 + 点表共用不串味 ───────────────
+
+    [Fact]
+    public void Gs15_device_level_swap_applies_to_point_without_explicit_swap()
+    {
+        // 点位没写 swap → 取设备级。原始字 0x4840,0xC3F5 是 3.14f 的 BADC 排布
+        _link.SetReadData(1, DataArea.HoldingRegister, 0, 0x4840, 0xC3F5);
+
+        Start(DEV_D1_BADC_SWAP, PS_ONE_FLOAT);
+
+        Thread.Sleep(400);
+
+        var value = _engine!.GetValueDetail("d1", "p");
+        Assert.Equal(3.14f, Assert.IsType<float>(value.Value), 3);
+    }
+
+    [Fact]
+    public void Gs15b_shared_pointset_resolves_swap_per_device()
+    {
+        // 同一个 PointSet 被两个设备共用、各自 swap 不同（ADR D38 的核心约束）：
+        // d1=BADCD 原始字按 BADC 排布，d2 的原始字按 CDAB 排布，两者都必须解出 3.14
+        _link.SetReadData(1, DataArea.HoldingRegister, 0, 0x4840, 0xC3F5); // BADC
+        _link.SetReadData(2, DataArea.HoldingRegister, 0, 0xF5C3, 0x4048); // CDAB
+
+        Start(DEV_D1_BADC_SWAP + DEV_D2_CDAB_SWAP, PS_ONE_FLOAT);
+
+        Thread.Sleep(500);
+
+        Assert.Equal(3.14f, Assert.IsType<float>(_engine!.GetValueDetail("d1", "p").Value), 3);
+        Assert.Equal(3.14f, Assert.IsType<float>(_engine.GetValueDetail("d2", "p").Value), 3);
+    }
+
+    [Fact]
+    public void Gs15c_point_level_and_defaults_swap_win_over_device()
+    {
+        // 显式声明（Point@swap / Defaults@swap）优先于设备级：设备给 word，点表缺省给 none
+        _link.SetReadData(1, DataArea.HoldingRegister, 0, 0x4048, 0xF5C3); // 3.14f 的 ABCD 排布
+
+        Start(DEV_D1_BADC_SWAP, PS_DEFAULTS_ABCD_SWAP);
+
+        Thread.Sleep(400);
+
+        Assert.Equal(3.14f, Assert.IsType<float>(_engine!.GetValueDetail("d1", "p").Value), 3);
+    }
+
+    [Fact]
+    public void Gs15d_global_swap_is_the_last_resort()
+    {
+        // 点位与设备都没声明 → 取 Global@swap（none）：ABCD 原始字直接解出 3.14
+        _link.SetReadData(1, DataArea.HoldingRegister, 0, 0x4048, 0xF5C3);
+
+        Start(DEV_D1, PS_ONE_FLOAT, globalAttrs: " swap=\"none\"");
+
+        Thread.Sleep(400);
+
+        Assert.Equal(3.14f, Assert.IsType<float>(_engine!.GetValueDetail("d1", "p").Value), 3);
+    }
+
+    // ─────────────── D24（ADR D37）：兜底 catch 不得静默 ───────────────
+
+    [Fact]
+    public void Gs16_unexpected_exception_emits_error_marks_quality_and_keeps_polling()
+    {
+        // 模拟驱动层未包装的裸 IOException（D24 的场景）：旧实现被 catch {} 静默吞掉，
+        // 既无事件也不更新质量。修复后：发事件 + 按策略置坏 + 线程存活继续采集。
+        _link.SetReadData(1, DataArea.HoldingRegister, 0, 5);
+        _link.FaultRules.Add(new FakeFaultRule { ThrowIo = true, RemainingCalls = 1 });
+
+        Start(DEV_D1_FAST, PS_ONE_POINT_FAST, quality: "bad", scanGroups: DEFAULT_GROUPS + FAST_GROUP);
+
+        Assert.True(SpinWait.SpinUntil(() => _errorEvents.Count > 0, 5_000),
+            "兜底 catch 必须发出错误事件，绝不能静默");
+        Assert.Contains(_errorEvents, e => e.Info.Code == "MODBUS.LINK");
+        Assert.Contains(_errorEvents, e => e is LinkError);
+
+        // 该窗口质量必须可见地变坏（onCommError=bad）
+        Assert.True(SpinWait.SpinUntil(
+                () => _engine!.GetValueDetail("d1", "p").Quality == PointQuality.Bad, 2_000),
+            "未归类异常的窗口必须按 onCommError 策略置坏");
+
+        // 线程不死：故障只注入一次，后续窗口继续采集
+        Assert.True(SpinWait.SpinUntil(
+                () => _engine!.GetValueDetail("d1", "p").IsGood, 5_000),
+            "兜底 catch 之后轮询线程必须继续采集（GATE-5）");
+        Assert.Equal((ushort)5, Assert.IsType<ushort>(_engine!.GetValueDetail("d1", "p").Value));
+    }
+
     // ─────────────── 配置模板 ───────────────
 
     private const string TEMPLATE = """
         <SamplerConfig schemaVersion="3.0">
-          <Global>
+          <Global{6}>
             <Polling rateMs="500" requestTimeoutMs="500" />
             <Quality onCommErrorValue="{0}" onCommError="{4}" />
             {5}
@@ -490,5 +620,40 @@ public class SchedulerGapTests : IDisposable
             <Alarm type="high" limit="10" />
           </Point>
         </Points></PointSet>
+        """;
+
+    // ─────────────── D19/D38 用例的模板 ───────────────
+
+    /// <summary>同一设备下两个相邻点，p2 覆盖 unitId=2（网关场景）。</summary>
+    private const string PS_TWO_UNITS = """
+        <PointSet id="ps1"><Points>
+          <Point id="p1" address="0" scanGroup="slow" />
+          <Point id="p2" address="1" scanGroup="slow" unitId="2" />
+        </Points></PointSet>
+        """;
+
+    /// <summary>点位级 unitId 的缺省形态：PointSet/Defaults@unitId。</summary>
+    private const string PS_DEFAULTS_UNIT2 = """
+        <PointSet id="ps1"><Defaults unitId="2" /><Points>
+          <Point id="p1" address="0" scanGroup="slow" />
+        </Points></PointSet>
+        """;
+
+    private const string DEV_D1_BADC_SWAP = """
+        <Device id="d1" transport="tcp1" pointSet="ps1" unitId="1" scanGroup="slow" swap="badc" />
+        """;
+
+    private const string DEV_D2_CDAB_SWAP = """
+        <Device id="d2" transport="tcp1" pointSet="ps1" unitId="2" scanGroup="slow" swap="cdab" />
+        """;
+
+    /// <summary>点位不写 swap（待设备/全局兜底）。</summary>
+    private const string PS_ONE_FLOAT = """
+        <PointSet id="ps1"><Points><Point id="p" address="0" dataType="float32" scanGroup="slow" /></Points></PointSet>
+        """;
+
+    /// <summary>点表缺省给了 swap=abcd：显式声明，优先于设备级。</summary>
+    private const string PS_DEFAULTS_ABCD_SWAP = """
+        <PointSet id="ps1"><Defaults swap="abcd" /><Points><Point id="p" address="0" dataType="float32" scanGroup="slow" /></Points></PointSet>
         """;
 }

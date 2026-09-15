@@ -22,6 +22,8 @@ public class PointCodecGapTests
             Area = RuntimeArea.HoldingRegister,
             DataType = RuntimeDataType.UInt16,
             Swap = SwapMode.None,
+            // 本用具在点位级显式给 swap（绕过加载器），故标记为「已声明」不走设备级兜底（ADR D38）
+            HasSwapDeclared = true,
             Address = 0,
         };
         configure?.Invoke(point);
@@ -138,6 +140,65 @@ public class PointCodecGapTests
         // digits=2：有效位数 2，高位截去只留低两位
         var truncated = Pt(p => { p.DataType = RuntimeDataType.Bcd; p.Length = 1; p.BcdDigits = 2; });
         Assert.Equal(34L, PointCodec.Decode(truncated, new ushort[] { 0x1234 }, T).Value);
+    }
+
+    // ─────────────── D20（ADR D34）：多字 BCD / datetime 的推导字长 + 完整解码 ───────────────
+
+    [Fact]
+    public void Gc3b_bcd_word_length_derives_from_digits_and_decodes_full_value()
+    {
+        // 不写 length（也写不出：CGV-8 只放行 string/raw）→ 字长按 digits 推导为 2 字
+        var point = Pt(p => { p.DataType = RuntimeDataType.Bcd; p.BcdDigits = 8; });
+        Assert.Equal(2, point.Length);
+
+        // 修复前 Length=1 → 轮询只切第 1 个字，永远只解出 1234（静默错值）
+        var decoded = PointCodec.Decode(point, new ushort[] { 0x1234, 0x5678 }, T);
+        Assert.True(decoded.IsGood);
+        Assert.Equal(12345678L, decoded.Value);
+    }
+
+    [Theory]
+    [InlineData("plc6", 6)]
+    [InlineData("plc4", 4)]
+    [InlineData("unixsec", 2)]
+    [InlineData("unixms", 4)]  // 毫秒必超 32 位，故 4 字（64 位）
+    public void Gc4b_datetime_word_length_derives_from_format(string format, int expectedWords)
+    {
+        var point = Pt(p => { p.DataType = RuntimeDataType.DateTime; p.DateTimeFormat = format; });
+
+        Assert.Equal(expectedWords, point.Length);
+    }
+
+    [Fact]
+    public void Gc4c_datetime_plc6_without_explicit_length_decodes_all_six_words()
+    {
+        var point = Pt(p => { p.DataType = RuntimeDataType.DateTime; p.DateTimeFormat = "plc6"; }); // 无 length
+        var decoded = PointCodec.Decode(point, new ushort[] { 2026, 9, 15, 10, 20, 30 }, T);
+
+        Assert.Equal(6, point.Length);
+        Assert.True(decoded.IsGood);
+        Assert.Equal(new DateTime(2026, 9, 15, 10, 20, 30), decoded.Value);
+    }
+
+    [Fact]
+    public void Gc4d_datetime_plc4_decodes_four_words()
+    {
+        var point = Pt(p => { p.DataType = RuntimeDataType.DateTime; p.DateTimeFormat = "plc4"; });
+        var decoded = PointCodec.Decode(point, new ushort[] { 2026, 9, 15, 10 }, T);
+
+        Assert.Equal(4, point.Length);
+        Assert.Equal(new DateTime(2026, 9, 15, 10, 0, 0), decoded.Value);
+    }
+
+    [Fact]
+    public void Gc4e_datetime_unix_seconds_decodes_two_words()
+    {
+        var point = Pt(p => { p.DataType = RuntimeDataType.DateTime; p.DateTimeFormat = "unixsec"; });
+        // 1700000000 = 0x6553F100
+        var decoded = PointCodec.Decode(point, new ushort[] { 0x6553, 0xF100 }, T);
+
+        Assert.Equal(2, point.Length);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1700000000).LocalDateTime, decoded.Value);
     }
 
     // ─────────────── G-C-4：DateTime plc6 合法值与越界钳制 ───────────────

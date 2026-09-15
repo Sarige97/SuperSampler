@@ -49,6 +49,8 @@ internal static class RuntimePointFactory
                 Area = Area,
                 DataType = DataType,
                 Swap = Swap,
+                // 测试用具在点位级显式给 swap：声明为「已声明」，运行期不再走设备级兜底（ADR D38）
+                HasSwapDeclared = true,
                 Address = Address,
                 Length = Length,
                 Bit = Bit,

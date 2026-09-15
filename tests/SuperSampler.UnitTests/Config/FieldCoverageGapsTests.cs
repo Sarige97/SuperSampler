@@ -85,11 +85,7 @@ public class FieldCoverageGapsTests
 
     private static IEnumerable<GapCase> UnwiredCases()
     {
-        // ── Global 属性：W37 回归（LoadGlobal 不再读这两个属性，回落模型缺省） ──
-        yield return C("Global@nullText 未解析（回归 W37，回落 \"--\"）", WithTop("<Global nullText=\"N/A\" />"),
-            c => Assert.Equal("--", G(c).NullText));
-        yield return C("Global@swap 未解析（回归 W37，回落 word）", WithTop("<Global swap=\"none\" />"),
-            c => Assert.Equal(SwapMode.Word, G(c).DefaultSwap));
+        // ── Global@nullText / Global@swap 已接线（ADR D38），正向断言见 GlobalNullTextAndSwapAreWired ──
 
         // ── Global 子段中仍未接线的部分 ──
         yield return C("Global/Polling@gapMs 未解析", WithTop("<Global><Polling gapMs=\"33\" /></Global>"),
@@ -282,7 +278,8 @@ public class FieldCoverageGapsTests
     {
         // W32：裸 FormatException 已包装为 ConfigValidationException
         var ex = Assert.Throws<ConfigValidationException>(() => WithPoint("bit=\"x\""));
-        Assert.Contains(ex.Errors, e => e.Contains("非法数值或布尔值"));
+        // 文案已增强为「点位+属性」定位（见 V3SampleConfigTests）：仍须是可读的配置错误，而非裸 FormatException
+        Assert.Contains(ex.Errors, e => e.Contains("不是合法数值或布尔值"));
     }
 
     [Fact]
@@ -336,6 +333,16 @@ public class FieldCoverageGapsTests
         var ex = LoadError(Base + "<PointSets><PointSet id=\"ps1\"><Blocks><Block id=\"b1\" start=\"0\" count=\"126\" /></Blocks><Points /></PointSet></PointSets>");
 
         Assert.Contains(ex.Errors, e => e.Contains("寄存器区 125"));
+    }
+
+    [Fact]
+    public void GlobalNullTextAndSwapAreWired()
+    {
+        // D38 / W37：这两个属性此前「声明但从不读取」（写了等于没写）
+        var c = WithTop("<Global nullText=\"N/A\" swap=\"none\" />");
+
+        Assert.Equal("N/A", G(c).NullText);
+        Assert.Equal(SwapMode.None, G(c).DefaultSwap);
     }
 
     // ─────────────── ⑦ i18n 资源加载与替换 ───────────────

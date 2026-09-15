@@ -70,9 +70,18 @@ public sealed class AlarmEngine
     /// alarmId 与 AlarmRaisedEvent 的 AlarmId 一致。
     /// </summary>
     public void Acknowledge(string deviceId, string pointId, string alarmId, string user)
+        => TryAcknowledge(deviceId, pointId, alarmId, user);
+
+    /// <summary>
+    /// 人工确认（可判定版本，ADR D36 / findings D22）：清除 AckPending（报警回到可重触发状态）
+    /// 并发出 <see cref="AlarmAcknowledgedEvent"/>（含确认人）。
+    /// 返回 false 表示该 (deviceId, pointId, alarmId) 当前没有任何状态记录
+    /// （从未触发，或 alarmId 不在该点位的报警配置里）——此时不发事件，也不算失败。
+    /// </summary>
+    public bool TryAcknowledge(string deviceId, string pointId, string alarmId, string user)
     {
         var key = PointKey.Of(deviceId, pointId) + "#" + alarmId;
-        if (!_states.TryGetValue(key, out var state)) return;
+        if (!_states.TryGetValue(key, out var state)) return false;
 
         lock (state)
         {
@@ -80,6 +89,7 @@ public sealed class AlarmEngine
         }
 
         _bus.Emit(new AlarmAcknowledgedEvent(alarmId, deviceId, pointId, user));
+        return true;
     }
 
     // ─────────────── 状态流转 ───────────────

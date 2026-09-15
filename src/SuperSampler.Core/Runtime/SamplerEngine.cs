@@ -103,6 +103,30 @@ public sealed class SamplerEngine : IDeviceManager, IModbusDebugTool, IDisposabl
         }, ct);
     }
 
+    // ═══════════════ 报警确认（IDeviceManager，ADR D36） ═══════════════
+
+    /// <inheritdoc />
+    public Task<AlarmAckResult> AcknowledgeAlarmAsync(string deviceId, string pointId, string alarmId, CancellationToken ct = default)
+        => AcknowledgeAlarmAsync(deviceId, pointId, alarmId, new ActingUser("Local", "Local"), ct);
+
+    /// <inheritdoc />
+    public Task<AlarmAckResult> AcknowledgeAlarmAsync(string deviceId, string pointId, string alarmId, ActingUser user, CancellationToken ct = default)
+    {
+        if (user == null) throw new ArgumentNullException(nameof(user));
+        if (alarmId == null) throw new ArgumentNullException(nameof(alarmId));
+
+        // 未知 device/point 抛 KeyNotFoundException（配置错误尽早暴露，docs/04 第 3 节）
+        _ = _registry.GetPoint(deviceId, pointId);
+
+        return Task.Run(() =>
+        {
+            // 语义与 AlarmEngine.Acknowledge 完全一致：清 AckPending → 可重触发 → 发确认事件（含 user）
+            return _scheduler.Alarms.TryAcknowledge(deviceId, pointId, alarmId, user.Name)
+                ? new AlarmAckResult(AlarmAckOutcome.Acknowledged)
+                : new AlarmAckResult(AlarmAckOutcome.NotPending);
+        }, ct);
+    }
+
     /// <summary>实际写管道。</summary>
     private WriteResult WriteCoreInner(string deviceId, string pointId, object? value, ActingUser user)
     {

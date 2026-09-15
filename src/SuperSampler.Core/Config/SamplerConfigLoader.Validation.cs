@@ -90,7 +90,9 @@ public static partial class SamplerConfigLoader
     {
         var path = point.DeviceId.Length > 0 ? point.DeviceId + "/" + point.Id : point.Id;
 
-        // CGV-8：显式 length 与 dataType 位宽一致（string/raw/位点除外）
+        // CGV-8：显式 length 与 dataType 位宽一致（string/raw/位点除外）。
+        // bcd/datetime 的期望字长按类型参数推导（ADR D34：Bcd@digits / DateTime@format），
+        // 与运行时切片共用同一个推导函数，避免「校验放行、轮询只读首字」的静默错值。
         if (point.Length > 0 && point.Slices == null && !point.Bit.HasValue && point.BitRange == null
             && point.DataType is not (RuntimeDataType.String or RuntimeDataType.Raw))
         {
@@ -100,6 +102,8 @@ public static partial class SamplerConfigLoader
                 Length = 0,
                 Bit = null,
                 BitRange = null,
+                BcdDigits = point.BcdDigits,
+                DateTimeFormat = point.DateTimeFormat,
             });
 
             if (point.Length != expected)

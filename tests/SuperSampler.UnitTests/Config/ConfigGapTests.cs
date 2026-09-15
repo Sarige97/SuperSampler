@@ -232,4 +232,119 @@ public class ConfigGapTests
           </PointSets>
         </SamplerConfig>
         """;
+
+    // ─────────────── D20（ADR D34）：BCD / datetime 的有效字长按类型参数推导 ───────────────
+
+    private static RuntimePoint Runtime(string pointXml)
+    {
+        var cfg = Load(POINT_TEMPLATE.Replace("{POINT}", pointXml));
+        return new RuntimePoint(cfg.PointSets[0].Points[0], cfg.Devices[0]);
+    }
+
+    private const string POINT_TEMPLATE = """
+        <SamplerConfig schemaVersion="3.0">
+          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
+          <Transports><Transport id="tcp1" host="x" /></Transports>
+          <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
+          <PointSets><PointSet id="ps1"><Points>{POINT}</Points></PointSet></PointSets>
+        </SamplerConfig>
+        """;
+
+    [Theory]
+    [InlineData(4, 1)]     // 默认 digits=4
+    [InlineData(1, 1)]
+    [InlineData(5, 2)]     // 每寄存器 4 位十进制，不足一寄存器向上取整
+    [InlineData(8, 2)]     // 电能表 8 位读数
+    [InlineData(9, 3)]
+    [InlineData(12, 3)]
+    public void Gcg6_bcd_word_length_follows_digits(int digits, int expectedWords)
+    {
+        var point = Runtime("<Point id=\"p\" address=\"0\" dataType=\"bcd\"><Bcd digits=\"" + digits + "\" /></Point>");
+
+        Assert.Equal(expectedWords, point.Length);
+    }
+
+    [Theory]
+    [InlineData("plc6", 6)]     // 年/月/日/时/分/秒
+    [InlineData("plc4", 4)]     // 年/月/日/时
+    [InlineData("unixsec", 2)]
+    [InlineData("unixms", 4)]   // 毫秒必超 32 位，故 4 字（64 位）
+    [InlineData("custom", 6)]   // 未知格式按 DecodeDateTime 的 default（plc6）兜底
+    public void Gcg6b_datetime_word_length_follows_format(string format, int expectedWords)
+    {
+        var point = Runtime("<Point id=\"p\" address=\"0\" dataType=\"datetime\"><DateTime format=\"" + format + "\" /></Point>");
+
+        Assert.Equal(expectedWords, point.Length);
+    }
+
+    [Fact]
+    public void Gcg6c_explicit_length_consistent_with_derivation_is_accepted()
+    {
+        // 推导值 = 2，显式写 2 不再被 CGV-8 拒绝（并且不会退回 1 字）
+        var point = Runtime("<Point id=\"p\" address=\"0\" dataType=\"bcd\" length=\"2\"><Bcd digits=\"8\" /></Point>");
+
+        Assert.Equal(2, point.Length);
+    }
+
+    [Fact]
+    public void Gcg6d_explicit_length_contradicting_derivation_is_rejected()
+    {
+        var ex = Assert.Throws<ConfigValidationException>(() => Load(POINT_TEMPLATE.Replace("{POINT}",
+            "<Point id=\"p\" address=\"0\" dataType=\"bcd\" length=\"1\"><Bcd digits=\"8\" /></Point>")));
+
+        Assert.Contains(ex.Errors, e => e.Contains("位宽 2 不符"));
+    }
+
+    // ─────────────── D38（ADR D38）：swap 兜底链的解析期口径 ───────────────
+
+    [Theory]
+    [InlineData("<Point id=\"p\" address=\"0\" swap=\"byte\" />", true, SwapMode.Byte)]                       // Point@swap
+    [InlineData("<Point id=\"p\" address=\"0\" />", false, SwapMode.Word)]                                    // 待设备/全局兜底
+    public void Gcg7_point_level_swap_marks_declared(string pointXml, bool declared, SwapMode expected)
+    {
+        var cfg = Load(POINT_TEMPLATE.Replace("{POINT}", pointXml));
+        var point = cfg.PointSets[0].Points[0];
+
+        Assert.Equal(expected, point.Swap);
+        Assert.Equal(declared, point.HasSwapDeclared);
+    }
+
+    [Fact]
+    public void Gcg7b_defaults_swap_counts_as_declared()
+    {
+        var cfg = Load("""
+            <SamplerConfig schemaVersion="3.0">
+              <ScanGroups><ScanGroup id="normal" /></ScanGroups>
+              <Transports><Transport id="tcp1" host="x" /></Transports>
+              <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
+              <PointSets><PointSet id="ps1"><Defaults swap="badc" />
+                <Points><Point id="p" address="0" /></Points>
+              </PointSet></PointSets>
+            </SamplerConfig>
+            """);
+        var point = cfg.PointSets[0].Points[0];
+
+        Assert.Equal(SwapMode.Byte, point.Swap);
+        Assert.True(point.HasSwapDeclared);   // 点表缺省也是显式声明，设备级不再覆盖它
+    }
+
+    [Fact]
+    public void Gcg7c_global_swap_is_read_and_is_the_last_resort()
+    {
+        var cfg = Load("""
+            <SamplerConfig schemaVersion="3.0">
+              <Global swap="dcba" nullText="N/A" />
+              <ScanGroups><ScanGroup id="normal" /></ScanGroups>
+              <Transports><Transport id="tcp1" host="x" /></Transports>
+              <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
+              <PointSets><PointSet id="ps1"><Points><Point id="p" address="0" /></Points></PointSet></PointSets>
+            </SamplerConfig>
+            """);
+
+        Assert.Equal(SwapMode.WordByte, cfg.Global.DefaultSwap);
+        Assert.Equal("N/A", cfg.Global.NullText);
+        // 点位未声明 → 运行期兜底到设备/全局（设备也没写 → Global.DefaultSwap）
+        var point = new RuntimePoint(cfg.PointSets[0].Points[0], cfg.Devices[0]);
+        Assert.Equal(SwapMode.WordByte, point.Swap);
+    }
 }

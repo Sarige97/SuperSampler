@@ -47,6 +47,23 @@ public sealed record WriteResult(
     PointValue? Readback,
     bool VerifyMismatch = false);
 
+/// <summary>报警确认结果。</summary>
+public enum AlarmAckOutcome
+{
+    /// <summary>确认已记录：AckPending 清除（报警回到可重触发状态），并已发出 AlarmAcknowledgedEvent。</summary>
+    Acknowledged = 0,
+
+    /// <summary>
+    /// 该报警当前没有状态记录：从未触发过，或 alarmId 不在该点位的报警配置里。
+    /// 未发出任何事件；这不是失败（重复确认、确认已恢复正常的报警都走这里）。
+    /// </summary>
+    NotPending = 1,
+}
+
+/// <summary>报警确认的结果对象（业务失败不抛异常，见 docs/02 D25）。</summary>
+/// <param name="Outcome">确认结果。</param>
+public sealed record AlarmAckResult(AlarmAckOutcome Outcome);
+
 /// <summary>
 /// 设备管理器：宿主日常使用的便捷门面。
 /// 寻址主键是 (deviceId, pointId)：deviceId 指向一个从站（链路 + 从站号），
@@ -78,4 +95,17 @@ public interface IDeviceManager
     /// <summary>带操作者身份的写入：权限按该用户角色校验，审计按该用户记账。</summary>
     /// <exception cref="KeyNotFoundException">id 不存在。</exception>
     Task<WriteResult> SetValueAsync(string deviceId, string pointId, object? value, ActingUser user, CancellationToken ct = default);
+
+    /// <summary>
+    /// 确认报警（ADR D36）：清除待确认标志（latch/ackRequired 报警由此回到可重触发状态），
+    /// 并发出 <c>AlarmAcknowledgedEvent</c>（含确认人）。
+    /// alarmId 与 AlarmRaisedEvent 的 AlarmId 一致（点位未写 Alarm@id 时为 "pointId#type"）。
+    /// 无 user 重载以框架内置身份 Local 记审计。
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">deviceId 或 pointId 不存在。</exception>
+    Task<AlarmAckResult> AcknowledgeAlarmAsync(string deviceId, string pointId, string alarmId, CancellationToken ct = default);
+
+    /// <summary>带操作者身份的报警确认：确认事件与审计按该用户记账。</summary>
+    /// <exception cref="KeyNotFoundException">deviceId 或 pointId 不存在。</exception>
+    Task<AlarmAckResult> AcknowledgeAlarmAsync(string deviceId, string pointId, string alarmId, ActingUser user, CancellationToken ct = default);
 }

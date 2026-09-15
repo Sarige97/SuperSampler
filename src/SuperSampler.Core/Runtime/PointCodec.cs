@@ -249,10 +249,14 @@ public static class PointCodec
 
             case "unixms":
             {
-                var millis = registers.Length >= 2
-                    ? Assemble(Reorder(new ushort[] { registers[0], registers[1] }, point.Swap))
-                    : registers[0];
-                return DateTimeOffset.FromUnixTimeMilliseconds((long)(uint)millis).LocalDateTime;
+                // 毫秒时间戳必然超出 32 位（2^32 ms ≈ 49.7 天），故 unixms 定为 4 字（64 位）；
+                // 兼容历史 2 字配置：只给 2 字时按 32 位解（会失真，配置校验已按 4 字推导字长）。
+                var millis = registers.Length >= 4
+                    ? (long)Assemble(Reorder(new ushort[] { registers[0], registers[1], registers[2], registers[3] }, point.Swap))
+                    : registers.Length >= 2
+                        ? (long)(uint)Assemble(Reorder(new ushort[] { registers[0], registers[1] }, point.Swap))
+                        : (long)registers[0];
+                return DateTimeOffset.FromUnixTimeMilliseconds(millis).LocalDateTime;
             }
 
             case "plc4":

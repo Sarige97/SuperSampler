@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading;
 using SuperSampler.Abstractions.Errors;
 using SuperSampler.Abstractions.Events;
@@ -78,6 +80,9 @@ public sealed class Scheduler : IDisposable
         foreach (var master in _masters.Values) master.Dispose();
     }
 
+    /// <summary>报警引擎：门面确认通路（ADR D36）与调度评估共用同一实例。</summary>
+    internal AlarmEngine Alarms => _alarms;
+
     /// <summary>按设备所属链路取主站（调试工具复用，保证与轮询同通道排队、不插队）。</summary>
     internal bool TryGetMaster(string deviceId, out IModbusLink? master)
     {
@@ -122,9 +127,11 @@ public sealed class Scheduler : IDisposable
                     {
                         ExecuteGroup(device, group);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // 单组失败不终止轮询线程；错误已经由事件与缓存质量上报
+                        // 单组失败不终止轮询线程（GATE-5）；但绝不静默（GATE-4，findings D24）：
+                        // 发一条链路错误事件并按当前质量策略把该组点位置坏，宿主必须能看见这一窗口丢了。
+                        ReportUnexpectedGroupFailure(device, group, ex);
                     }
 
                     dueTimes[group] = onceGroups.Contains(group)
@@ -170,21 +177,28 @@ public sealed class Scheduler : IDisposable
             ReadWindow(device, master, block.Area, block.Start, block.Count, block.UnitId, block.Points, block.Start);
         }
 
+        // 散点批次按「点位自身的 unitId」下发（ADR D33）：网关下一条链路挂多个从站时，
+        // Point@unitId / PointSet/Defaults@unitId 决定该点属于哪个从站（D19：此前固定用 device.UnitId，
+        // 会静默读到错从站且值仍是 Good）
         foreach (var batch in MergeStandalone(device, group))
         {
-            ReadWindow(device, master, batch.Area, batch.Address, batch.Count, device.UnitId, batch.Points, batch.Address);
+            ReadWindow(device, master, batch.Area, batch.Address, batch.Count, batch.UnitId, batch.Points, batch.Address);
         }
     }
 
     private IEnumerable<ReadBatch> MergeStandalone(RuntimeDevice device, string group)
     {
         var batches = new List<ReadBatch>();
-        foreach (var areaGroup in device.Points.Values
+
+        // 合并键 = (从站号, 数据区)：不同 unitId 的点位即使地址相邻也必须分到不同请求（ADR D33）
+        foreach (var slaveGroup in device.Points.Values
                      .Where(p => p.Enabled && !p.IsCalculated && !p.IsInBlock && p.ScanGroup == group)
-                     .GroupBy(p => p.Area))
+                     .GroupBy(p => new { p.UnitId, p.Area })
+                     .OrderBy(g => g.Key.UnitId)
+                     .ThenBy(g => (int)g.Key.Area))
         {
             var pending = new List<RuntimePoint>();
-            foreach (var point in areaGroup.OrderBy(p => p.Address))
+            foreach (var point in slaveGroup.OrderBy(p => p.Address))
             {
                 if (pending.Count == 0)
                 {
@@ -196,7 +210,7 @@ public sealed class Scheduler : IDisposable
                 var pendingLength = pending.Sum(p => p.Length);
 
                 // 单次读上限按数据区区分：寄存器 125、位 2000（findings W7 接线，值来自配置）
-                var mergeLimit = areaGroup.Key is RuntimeArea.Coil or RuntimeArea.DiscreteInput
+                var mergeLimit = slaveGroup.Key.Area is RuntimeArea.Coil or RuntimeArea.DiscreteInput
                     ? _global.MaxBitsPerRead
                     : _global.MaxRegistersPerRead;
 
@@ -208,13 +222,13 @@ public sealed class Scheduler : IDisposable
                 }
                 else
                 {
-                    batches.Add(ReadBatch.From(pending));
+                    batches.Add(ReadBatch.From(slaveGroup.Key.UnitId, pending));
                     pending.Clear();
                     pending.Add(point);
                 }
             }
 
-            if (pending.Count > 0) batches.Add(ReadBatch.From(pending));
+            if (pending.Count > 0) batches.Add(ReadBatch.From(slaveGroup.Key.UnitId, pending));
         }
 
         return batches;
@@ -371,9 +385,13 @@ public sealed class Scheduler : IDisposable
         public RuntimeArea Area { get; private set; }
         public int Address { get; private set; }
         public int Count { get; private set; }
+
+        /// <summary>本批次的从站号：来自点位自身的 unitId（ADR D33），不是设备声明值。</summary>
+        public int UnitId { get; private set; }
+
         public IReadOnlyList<RuntimePoint> Points { get; private set; } = Array.Empty<RuntimePoint>();
 
-        public static ReadBatch From(IReadOnlyList<RuntimePoint> points)
+        public static ReadBatch From(int unitId, IReadOnlyList<RuntimePoint> points)
         {
             var first = points[0];
             var last = points[points.Count - 1];
@@ -382,11 +400,44 @@ public sealed class Scheduler : IDisposable
                 Area = first.Area,
                 Address = first.Address,
                 Count = (last.Address + last.Length) - first.Address,
+                UnitId = unitId,
                 // D15：必须快照。调用方复用同一个 pending 列表（Clear 后装下一批），
                 // 直接存引用会让前面所有批次的 Points 变成最后一批的内容（集成实测抓出）。
                 Points = points.ToArray(),
             };
         }
+    }
+
+    /// <summary>
+    /// 兜底：单组执行抛出未归类异常时上报（findings D24）。驱动层异常本该在通道边界
+    /// （<c>ModbusChannel.Execute</c>）就包装成 <see cref="ModbusIoException"/> 并给出分类（ADR D37），
+    /// 这里只处理「漏网」的意外：发一条链路错误事件 + 按 <c>Global/Quality@onCommError</c> 策略
+    /// 把该组点位置坏，同时保证轮询线程存活（GATE-5）。绝不静默吞掉（GATE-4）。
+    /// 按框架约定事件不携带人类语言句子，异常细节不进 ErrorInfo，只用于区分错误码。
+    /// </summary>
+    private void ReportUnexpectedGroupFailure(RuntimeDevice device, string group, Exception exception)
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var affected = device.Points.Values
+            .Where(p => p.Enabled && !p.IsCalculated && p.ScanGroup == group)
+            .ToList();
+
+        MarkWindowFailed(affected, timestamp);
+
+        var isIoFailure = exception is IOException or SocketException or ModbusIoException or ObjectDisposedException;
+        var info = new ErrorInfo(
+            isIoFailure ? "MODBUS.LINK" : "SS.SCHEDULER.UNEXPECTED",
+            EventCategory.Device,
+            EventLevel.Error,
+            ErrorSource.Transport,
+            "ss.error.comm",
+            new ErrorContext(
+                DeviceId: device.Id,
+                TransportId: device.Transport.Id,
+                UnitId: device.UnitId,
+                ConsecutiveFailures: affected.Count));
+
+        _bus.Emit(new LinkError(info));
     }
 
     /// <summary>Core 数据区 → 驱动层数据区（驱动不依赖 Core，见分层）。</summary>

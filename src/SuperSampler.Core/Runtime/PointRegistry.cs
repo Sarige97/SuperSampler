@@ -108,23 +108,12 @@ public sealed class RuntimePoint
             }
         }
 
-        Length = source.Length > 0
-            ? source.Length
-            : Bit.HasValue || BitFrom.HasValue
-                ? 1
-                : DataType switch
-                {
-                    RuntimeDataType.Int32 => 2,
-                    RuntimeDataType.UInt32 => 2,
-                    RuntimeDataType.Float32 => 2,
-                    RuntimeDataType.Int64 => 4,
-                    RuntimeDataType.UInt64 => 4,
-                    RuntimeDataType.Float64 => 4,
-                    _ => 1,
-                };
+        Length = SamplerConfigLoader.EffectiveLength(source);
 
-        // 设备级 swap 已在配置解析阶段作为点位缺省写入 source.Swap，这里直接采用
-        Swap = source.Swap;
+        // swap 兜底链（ADR D38）：Point@swap > PointSet/Defaults@swap > Block@swap（块内） > Device@swap > Global@swap。
+        // 只有「未显式声明」的点位才取设备级值——同一 PointSet 可被多设备共用，各自 swap 不同，
+        // 所以设备级兜底只能在运行期（拿到 device 的这里）解析，绝不能在加载器里烧进共享的 PointConfig。
+        Swap = source.HasSwapDeclared ? source.Swap : device.Swap;
         UnitId = source.UnitIdOverride ?? device.UnitId;
         TransportId = device.Transport;
     }

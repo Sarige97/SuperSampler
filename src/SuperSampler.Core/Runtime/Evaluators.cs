@@ -96,10 +96,10 @@ public static class ExpressionEvaluator
                 SkipSpaces();
                 if (_pos < _text.Length && _text[_pos] == ')') _pos++;
 
-                var pointValue = _resolvePoint(id);
-                if (pointValue == null || !pointValue.Value.TryGetValue(out double d))
+                var resolved = _resolvePoint(id);
+                if (resolved == null || !resolved.Value.IsGood || !TryToDouble(resolved.Value.Value, out var d))
                 {
-                    // 非数值点（字符串/原始块）参与算术，或点位无值 → NaN
+                    // 非数值点（bool/字符串/原始块）参与算术、坏值、或点位无值 → NaN
                     return double.NaN;
                 }
 
@@ -130,6 +130,33 @@ public static class ExpressionEvaluator
             SkipSpaces();
             if (_pos + name.Length > _text.Length) return false;
             return string.CompareOrdinal(_text, _pos, name, 0, name.Length) == 0;
+        }
+
+        /// <summary>
+        /// 点位值 → double（ADR D35）：所有数值类型统一转换，不再要求「箱内恰好是 double」。
+        /// 此前 float32 解出 float、int16 解出 short 会被判为类型不符 → 计算点静默变
+        /// Bad(ss.reason.calculate)（findings D21）。
+        /// bool 视为非数值（离散量参与算术没有意义），字符串 / raw（ushort[]）/ null 一律不可用。
+        /// </summary>
+        private static bool TryToDouble(object? value, out double number)
+        {
+            switch (value)
+            {
+                case byte v: number = v; return true;
+                case sbyte v: number = v; return true;
+                case short v: number = v; return true;
+                case ushort v: number = v; return true;
+                case int v: number = v; return true;
+                case uint v: number = v; return true;
+                case long v: number = v; return true;
+                case ulong v: number = v; return true;
+                case float v: number = v; return true;
+                case double v: number = v; return true;
+                case decimal v: number = (double)v; return true;
+                default:
+                    number = 0;
+                    return false;
+            }
         }
 
         private string ReadStringLiteral()

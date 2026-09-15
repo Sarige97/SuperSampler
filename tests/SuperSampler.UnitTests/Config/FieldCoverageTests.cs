@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml.Linq;
@@ -76,7 +76,7 @@ public class FieldCoverageTests
 
     private static IEnumerable<FieldCase> ParsedCases()
     {
-        // Global（Global@nullText / Global@swap 目前未被加载器读取，见 FieldCoverageGapsTests.W37）
+        // Global（nullText / swap 已接线，见 ADR D38；正向断言见 FieldCoverageGapsTests.GlobalNullTextAndSwapAreWired）
         yield return C("Global/Polling@rateMs", Cfg(Pt(""), top: "<Global><Polling rateMs=\"250\" /></Global>"), c => Assert.Equal(250, G(c).DefaultRateMs));
         yield return C("Global/Polling@requestTimeoutMs", Cfg(Pt(""), top: "<Global><Polling requestTimeoutMs=\"750\" /></Global>"), c => Assert.Equal(750, G(c).RequestTimeoutMs));
         yield return C("Global/Quality@onCommErrorValue", Cfg(Pt(""), top: "<Global><Quality onCommErrorValue=\"null\" /></Global>"), c => Assert.Equal("null", G(c).OnCommErrorValue));
@@ -361,7 +361,7 @@ public class FieldCoverageTests
         yield return C("Point.area overrides Defaults", Cfg(Pt("area=\"coil\""), defaults: "<Defaults area=\"input\" />"), c => Assert.Equal(RuntimeArea.Coil, P0(c).Area));
         yield return C("Point.scanGroup overrides Defaults", Cfg(Pt("scanGroup=\"fast\""), defaults: "<Defaults scanGroup=\"normal\" />"), c => Assert.Equal("fast", P0(c).ScanGroup));
 
-        // Point.swap 覆盖 Defaults（Global@swap 未接线，不参与继承链，见 W37）
+        // Point.swap 覆盖 Defaults（链的点位侧；设备级/全局级兜底在 RuntimePoint 解析，见 ADR D38）
         yield return C("Point.swap overrides Defaults.swap", Cfg(Pt("swap=\"word_byte\""), defaults: "<Defaults swap=\"byte\" />"), c => Assert.Equal(SwapMode.WordByte, P0(c).Swap));
 
         // Block → Block 内点位（块内点位未写时继承块）

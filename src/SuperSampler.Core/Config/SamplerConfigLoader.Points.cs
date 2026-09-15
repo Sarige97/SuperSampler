@@ -81,7 +81,13 @@ public static partial class SamplerConfigLoader
                     point.Area = block.Area;
                     point.ScanGroup = block.ScanGroup;
                     if (block.UnitId.HasValue) point.UnitIdOverride = block.UnitId;
-                    if (pointElement.Attribute("swap") == null) point.Swap = block.Swap;
+                    if (pointElement.Attribute("swap") == null)
+                    {
+                        // 块内点位未写 swap：由块决定（Block@swap，缺省 word）。
+                        // 视为块作用域内的显式声明，不再向 Defaults/Device 兜底（docs/01 第 6 节）。
+                        point.Swap = block.Swap;
+                        point.HasSwapDeclared = true;
+                    }
 
                     point.Address = ResolveAddress(pointElement, errors, $"{setId}/{point.Id}");
                     ValidatePointRules(point, pointElement, errors);
@@ -136,6 +142,74 @@ public static partial class SamplerConfigLoader
             return null;
         }
 
+        // 数值/布尔属性写错（如 limit="true"、bit="x"）时，要把「哪个点位、哪个属性」报出来：
+        // 裸 FormatException 的消息只有类型转换文本，宿主拿不到定位（findings：v3 样例因此难查）。
+        try
+        {
+            return ParsePointCore(e, id!, pointSetId, config, pointTemplates, defaults, errors);
+        }
+        catch (FormatException ex)
+        {
+            var attr = FindOffendingAttribute(e);
+            errors.Add($"点位 {id}（PointSet {pointSetId}）属性 '{attr}' 不是合法数值或布尔值：{ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 粗定位：在元素**及其子元素**上按已知的数值/布尔属性顺序尝试解析，第一个失败的即为元凶。
+    /// （必须含子元素：`limit` 这类属性挂在 &lt;Alarm&gt;/&lt;Write&gt;/&lt;Scale&gt; 等子元素上。）
+    /// </summary>
+    private static string FindOffendingAttribute(XElement e)
+    {
+        foreach (var element in e.DescendantsAndSelf())
+        {
+            var found = FindOffendingAttributeOn(element);
+            if (found != null) return element.Name.LocalName + "@" + found;
+        }
+
+        return "(未知属性)";
+    }
+
+    private static string? FindOffendingAttributeOn(XElement e)
+    {
+        var numeric = new[] { "limit", "delayMs", "deadband", "min", "max", "step", "factor", "offset",
+            "rawLow", "rawHigh", "scaledLow", "scaledHigh", "low", "high", "decimals", "digits",
+            "address", "length", "bit", "unitId", "pulseMs" };
+        foreach (var name in numeric)
+        {
+            var a = e.Attribute(name);
+            if (a == null) continue;
+            var text = a.Value;
+            if (string.Equals(name, "unitId") || string.Equals(name, "address") || string.Equals(name, "length")
+                || string.Equals(name, "bit") || string.Equals(name, "decimals") || string.Equals(name, "digits")
+                || string.Equals(name, "pulseMs") || string.Equals(name, "delayMs"))
+            {
+                if (!int.TryParse(text, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out _))
+                {
+                    return name;
+                }
+            }
+            else if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
+                         System.Globalization.CultureInfo.InvariantCulture, out _))
+            {
+                return name;
+            }
+        }
+
+        return null;
+    }
+
+    private static PointConfig? ParsePointCore(
+        XElement e,
+        string id,
+        string pointSetId,
+        SamplerConfiguration config,
+        Dictionary<string, XElement> pointTemplates,
+        PointDefaults? defaults,
+        List<string> errors)
+    {
         // 模板先行，实例覆盖
         XElement merged = e;
         var templateRef = (string?)e.Attribute("template");
@@ -162,13 +236,19 @@ public static partial class SamplerConfigLoader
             errors.Add($"点位 {id}：access 非法值 \"{accessText}\"（应为 read/write/readwrite）");
         }
 
+        // swap 兜底链（ADR D38）：Point@swap > PointSet/Defaults@swap > Device@swap > Global@swap。
+        // 设备级与全局级兜底在运行期按「点位所属设备」解析（PointSet 可被多设备共用），
+        // 这里只记「是否显式声明」；未显式声明时 Swap 暂存全局缺省，仅用于宿主展示。
+        var declaredSwap = ParseSwap((string?)merged.Attribute("swap")) ?? defaults?.Swap;
+
         var point = new PointConfig
         {
             Id = id!,
             Name = I18nText(config.I18n, (string?)merged.Attribute("name")),
             Area = ParseArea((string?)merged.Attribute("area")) ?? defaults?.Area ?? RuntimeArea.HoldingRegister,
             DataType = ParseDataType((string?)merged.Attribute("dataType")) ?? defaults?.DataType ?? RuntimeDataType.UInt16,
-            Swap = ParseSwap((string?)merged.Attribute("swap")) ?? defaults?.Swap ?? config.Global.DefaultSwap,
+            Swap = declaredSwap ?? config.Global.DefaultSwap,
+            HasSwapDeclared = declaredSwap.HasValue,
             ScanGroup = (string?)merged.Attribute("scanGroup") ?? defaults?.ScanGroup ?? "normal",
             Access = ((string?)merged.Attribute("access") ?? defaults?.Access ?? "read").ToLowerInvariant(),
             Unit = I18nText(config.I18n, (string?)merged.Attribute("unit")),
@@ -340,10 +420,17 @@ public static partial class SamplerConfigLoader
         }
     }
 
+    /// <summary>
+    /// 点位的有效字长（寄存器/位数）：显式 length 优先，其余按 dataType 推导。
+    /// BCD 与 datetime 的字长按类型参数推导（ADR D34），必须与
+    /// <c>PointCodec.DecodeBcd</c> / <c>PointCodec.DecodeDateTime</c> 的实际读取需求一致；
+    /// 校验（CGV-8）、块窗口校验与运行时 <c>RuntimePoint.Length</c> 共用这一个函数，避免两处各写一份。
+    /// </summary>
     internal static int EffectiveLength(PointConfig point)
     {
         if (point.Length > 0) return point.Length;
         if (point.Bit.HasValue || point.BitRange != null) return 1;
+
         return point.DataType switch
         {
             RuntimeDataType.Int32 => 2,
@@ -352,8 +439,30 @@ public static partial class SamplerConfigLoader
             RuntimeDataType.Int64 => 4,
             RuntimeDataType.UInt64 => 4,
             RuntimeDataType.Float64 => 4,
+            RuntimeDataType.Bcd => BcdWordCount(point.BcdDigits),
+            RuntimeDataType.DateTime => DateTimeWordCount(point.DateTimeFormat),
             _ => 1,
         };
+    }
+
+    /// <summary>BCD 每寄存器 4 位十进制；digits 非法（≤0）按 1 字兜底（与解码截位口径一致）。</summary>
+    internal static int BcdWordCount(int digits)
+        => digits <= 0 ? 1 : (digits + 3) / 4;
+
+    /// <summary>
+    /// datetime 各格式的字数：plc6 年/月/日/时/分/秒 = 6；plc4 年/月/日/时 = 4；
+    /// unixsec = 2 字（32 位秒）、unixms = 4 字（64 位毫秒，毫秒必超 32 位）；
+    /// 未知格式按 plc6 兜底（与 DecodeDateTime 的 default 分支一致）。
+    /// </summary>
+    internal static int DateTimeWordCount(string format)
+    {
+        switch ((format ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "plc4": return 4;
+            case "unixsec": return 2;
+            case "unixms": return 4;
+            default: return 6;
+        }
     }
 
     internal static SwapMode? ParseSwap(string? text)

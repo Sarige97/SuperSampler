@@ -128,12 +128,12 @@ public sealed class ComplexStubBreakerTests
             Assert.Equal("offline", ack.Results.Single().Str("state"));
 
             await ComplexStubFixture.WaitQualityAsync(engine, "d", "p.temp", PointQuality.Bad, 6000);
-            // 分类观察（findings F7）：refuse 把已有连接 RST 掉之后，socket 仍处于可读状态、写请求被静默丢弃，
-            // 驱动层看到的是「应答超时」→ 上报 MODBUS.TIMEOUT（瞬时类），而不是 MODBUS.LINK（链路类）。
-            // 宿主因此无法区分「设备断电/RST」与「设备慢」，两者的自愈策略并不相同。
-            Assert.True(await errors.WaitAsync(e => e is TimeoutError, 5000),
-                "refuse 期间失败必须上报错误事件（当前实现归类为 TimeoutError）");
-            Assert.All(errors.Items, e => Assert.Equal("MODBUS.TIMEOUT", e.Info.Code));
+            // 分类（ADR D37，findings D23）：refuse 把已有连接 RST 掉之后，对端已关闭/复位 →
+            // 必须归类为**链路错误**（MODBUS.LINK），而不是超时。宿主据此区分「设备断电/被 RST」
+            // 与「设备慢」——两者的退避与告警策略不同。
+            Assert.True(await errors.WaitAsync(e => e is LinkError, 5000),
+                "RST/连接被拒必须上报链路错误事件");
+            Assert.Contains(errors.Items, e => e.Info.Code == "MODBUS.LINK");
             Assert.InRange(_stub.CountBreakerFrames(PortP1, "req", 1), 1, int.MaxValue);
 
             // 到点自动恢复：质量回 Good、时间戳推进（轮询线程没被异常打死）
