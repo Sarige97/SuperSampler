@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+*.suo
+TestResults/
+[Rr]elease/
+[Dd]ebug/
+artifacts/
+*.nuget.props
+*.nuget.targets

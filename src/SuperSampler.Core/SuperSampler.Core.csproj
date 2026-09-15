@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net46</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SuperSampler.Abstractions\SuperSampler.Abstractions.csproj" />
+    <ProjectReference Include="..\SuperSampler.Drivers.Modbus\SuperSampler.Drivers.Modbus.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Jint" Version="2.11.58" />
+    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.18.2" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    发布打包：把 Jint 合并进 SuperSampler.Core.dll，宿主只拿一个 DLL（对外保持零依赖）。
+    仅在发布时启用：dotnet build -p:EnableILRepack=true
+    日常构建/测试不合并，保持快速与可调试。
+  -->
+  <Target Name="ILRepackMerge" AfterTargets="Build" Condition="'$(EnableILRepack)' == 'true'">
+    <ItemGroup>
+      <MergeAssemblies Include="$(OutputPath)Jint.dll" />
+    </ItemGroup>
+    <ILRepack
+      OutputAssembly="$(OutputPath)$(AssemblyName)-merged.dll"
+      InputAssemblies="@(MergeAssemblies)"
+      PrimaryAssembly="$(OutputPath)$(AssemblyName).dll"
+      Internalize="true"
+      Parallel="true" />
+  </Target>
+</Project>
