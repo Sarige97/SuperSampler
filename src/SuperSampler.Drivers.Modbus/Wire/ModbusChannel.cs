@@ -330,11 +330,11 @@ public sealed class ModbusChannel : IDisposable
         var length = (header[4] << 8) | header[5];
         if (length < 2 || length > 260) throw new ModbusIoException($"非法 MBAP 长度 {length}");
 
-        var rest = ReadExact(_stream!, length - 1, timeoutMs);
-        if (rest[0] != unitId) throw new ModbusIoException($"从站号不匹配：期望 {unitId}，收到 {rest[0]}");
+        // D14：MBAP 长度域 = 单元号 1 + PDU N，7 字节头已含单元号（header[6]），
+        // 剩余 length-1 字节即为纯 PDU，首字节是功能码而非单元号（集成实测抓出）。
+        if (header[6] != unitId) throw new ModbusIoException($"从站号不匹配：期望 {unitId}，收到 {header[6]}");
 
-        var pdu = new byte[rest.Length - 1];
-        Array.Copy(rest, 1, pdu, 0, pdu.Length);
+        var pdu = ReadExact(_stream!, length - 1, timeoutMs);
         ValidateFunctionByte(pdu);
         return pdu;
     }

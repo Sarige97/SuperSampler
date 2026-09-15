@@ -195,7 +195,7 @@ public static class PointCodec
     {
         return name.ToLowerInvariant() switch
         {
-            "utf8" => new UTF8Encoding(false),
+            "utf8" or "utf-8" => new UTF8Encoding(false),
             "gbk" or "gb18030" or "gb2312" => Encoding.GetEncoding(936),
             _ => Encoding.ASCII,
         };

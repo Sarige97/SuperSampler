@@ -31,14 +31,16 @@ public sealed partial class ModbusMaster
 
         return Execute(pdu, unitId, timeoutMs, retries, retryIntervalMs, reply =>
         {
-            if (reply.Pdu!.Length < 3)
+            if (reply.Pdu!.Length < 2)
             {
                 reply.Fail(ModbusFailureKind.Protocol, 0, "应答长度不足");
                 return;
             }
 
-            var byteCount = reply.Pdu[2];
-            if (reply.Pdu.Length < 3 + byteCount)
+            // D14 配套：ReadTcpResponse 返回 pdu 为 [fc, bc, data…]（无单元号，Modbus 标准）——
+            // 字节数在 [1]，数据从 [2] 起。此前按带单元号偏移解析（数据 [3] 起）导致真链路必失败。
+            var byteCount = reply.Pdu[1];
+            if (reply.Pdu.Length < 2 + byteCount)
             {
                 reply.Fail(ModbusFailureKind.Protocol, 0, "应答数据长度不足");
                 return;
@@ -49,7 +51,7 @@ public sealed partial class ModbusMaster
             {
                 for (var i = 0; i < count; i++)
                 {
-                    var bit = (reply.Pdu[3 + (i / 8)] >> (i % 8)) & 1;
+                    var bit = (reply.Pdu[2 + (i / 8)] >> (i % 8)) & 1;
                     words[i] = (ushort)bit;
                 }
             }
@@ -63,7 +65,7 @@ public sealed partial class ModbusMaster
 
                 for (var i = 0; i < count; i++)
                 {
-                    words[i] = (ushort)((reply.Pdu[3 + (i * 2)] << 8) | reply.Pdu[4 + (i * 2)]);
+                    words[i] = (ushort)((reply.Pdu[2 + (i * 2)] << 8) | reply.Pdu[3 + (i * 2)]);
                 }
             }
 

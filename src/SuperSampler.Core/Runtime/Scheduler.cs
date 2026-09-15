@@ -180,7 +180,7 @@ public sealed class Scheduler : IDisposable
     {
         var batches = new List<ReadBatch>();
         foreach (var areaGroup in device.Points.Values
-                     .Where(p => p.Enabled && !p.IsCalculated && p.ScanGroup == group)
+                     .Where(p => p.Enabled && !p.IsCalculated && !p.IsInBlock && p.ScanGroup == group)
                      .GroupBy(p => p.Area))
         {
             var pending = new List<RuntimePoint>();
@@ -244,10 +244,18 @@ public sealed class Scheduler : IDisposable
             return;
         }
 
+
         foreach (var point in points)
         {
-            if (!point.Enabled) continue; // 停用的点位不写缓存、不报警
-            if (point.Slices != null) continue; // 非连续片段点位 v1 仅在 TriggerRead 路径支持
+            if (!point.Enabled)
+            {
+                continue; // 停用的点位不写缓存、不报警
+            }
+
+            if (point.Slices != null)
+            {
+                continue; // 非连续片段点位 v1 仅在 TriggerRead 路径支持
+            }
 
             var offset = point.Address - windowStart;
             if (offset < 0 || offset + point.Length > reply.Registers.Length)
@@ -374,7 +382,9 @@ public sealed class Scheduler : IDisposable
                 Area = first.Area,
                 Address = first.Address,
                 Count = (last.Address + last.Length) - first.Address,
-                Points = points,
+                // D15：必须快照。调用方复用同一个 pending 列表（Clear 后装下一批），
+                // 直接存引用会让前面所有批次的 Points 变成最后一批的内容（集成实测抓出）。
+                Points = points.ToArray(),
             };
         }
     }

@@ -57,18 +57,22 @@ public sealed class RuntimePoint
     /// <summary>是否启用；false 不参与轮询（findings W17 接线）。</summary>
     public bool Enabled { get; }
 
+    /// <summary>是否归属块读：块点位只随块窗口读取，不得被 MergeStandalone 当散点重复轮询（D16 配套）。</summary>
+    public bool IsInBlock { get; }
+
     /// <summary>计算点表达式。</summary>
     public string? Expression { get; }
 
     public PointConfig Source { get; }
 
-    public RuntimePoint(PointConfig source, DeviceConfig device)
+    public RuntimePoint(PointConfig source, DeviceConfig device, bool isInBlock = false)
     {
         Source = source;
         DeviceId = device.Id;
         PointId = source.Id;
         Key = PointKey.Of(device.Id, source.Id);
         Name = source.Name;
+        IsInBlock = isInBlock;
 
         Area = source.Area;
         Address = source.Address;
@@ -153,7 +157,7 @@ public sealed class RuntimeBlock
         UnitId = source.UnitId ?? device.UnitId;
         Swap = source.Swap;
         Enabled = source.Enabled;
-        Points = source.Points.Select(p => new RuntimePoint(p, device)).ToList();
+        Points = source.Points.Select(p => new RuntimePoint(p, device, isInBlock: true)).ToList();
     }
 }
 
@@ -185,8 +189,23 @@ public sealed class RuntimeDevice
             points.Add(calculated.Id, new RuntimePoint(calculated, config));
         }
 
+Blocks = pointSet.Blocks.Select(b => new RuntimeBlock(b, config)).ToList();
+
+        // D16：块内点位也必须进设备点表，否则门面 GetValueDetail/GetValue 读不到（只被调度器缓存）。
+        // 仅注册启用块的点位（禁用块不轮询、门面读不到是符合语义的）；与独立点位重名时后者优先。
+        foreach (var block in Blocks)
+        {
+            if (!block.Enabled) continue;
+            foreach (var blockPoint in block.Points)
+            {
+                if (!points.ContainsKey(blockPoint.PointId))
+                {
+                    points.Add(blockPoint.PointId, blockPoint);
+                }
+            }
+        }
+
         Points = points;
-        Blocks = pointSet.Blocks.Select(b => new RuntimeBlock(b, config)).ToList();
     }
 }
 
