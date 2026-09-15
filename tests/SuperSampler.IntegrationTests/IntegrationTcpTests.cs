@@ -64,21 +64,27 @@ public class IntegrationTcpTests
             $"""<Device id="d1" transport="tcp1" unitId="{unitId}" pointSet="ps1" />""",
             $"""<Points>{pointsXml}</Points>""");
 
-    /// <summary>等一个点出现指定质量（Good）并返回三元组；超时抛异常。模拟器轮询上限给足。</summary>
-    private static async Task<PointValue> WaitGood(IDeviceManager mgr, string deviceId, string pointId, int timeoutMs = 8000)
+    /// <summary>等一个点出现指定质量并返回三元组；超时抛异常（带当前质量与原因）。</summary>
+    private static async Task<PointValue> WaitQuality(IDeviceManager mgr, string deviceId, string pointId,
+        PointQuality expected, int timeoutMs = 8000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
             var v = mgr.GetValueDetail(deviceId, pointId);
-            if (v.IsGood)
+            if (v.Quality == expected)
             {
                 return v;
             }
             await Task.Delay(50);
         }
-        throw new TimeoutException($"点 {deviceId}/{pointId} 未在 {timeoutMs}ms 内 Good（质量={mgr.GetValueDetail(deviceId, pointId).Quality}, reason={mgr.GetValueDetail(deviceId, pointId).Reason ?? "null"}）");
+        var last = mgr.GetValueDetail(deviceId, pointId);
+        throw new TimeoutException($"点 {deviceId}/{pointId} 未在 {timeoutMs}ms 内变 {expected}（实际={last.Quality}, reason={last.Reason ?? "null"}）");
     }
+
+    /// <summary>等一个点 Good。</summary>
+    private static Task<PointValue> WaitGood(IDeviceManager mgr, string deviceId, string pointId, int timeoutMs = 8000)
+        => WaitQuality(mgr, deviceId, pointId, PointQuality.Good, timeoutMs);
 
     private static T Get<T>(PointValue v)
     {
@@ -163,14 +169,26 @@ public class IntegrationTcpTests
         try
         {
             var m = (IDeviceManager)engine;
-            Assert.Equal(float.PositiveInfinity, Get<float>(await WaitGood(m, "d1", "b.pinf")));
-            Assert.Equal(float.NegativeInfinity, Get<float>(await WaitGood(m, "d1", "b.ninf")));
-            Assert.True(float.IsNaN(Get<float>(await WaitGood(m, "d1", "b.nan"))), "NaN 应原样解码");
+            // ADR D32：±Inf/NaN 一律 Uncertain + 原因，值原样保留（GATE-3 绝不产出伪 Good）
+            var pinf = await WaitQuality(m, "d1", "b.pinf", PointQuality.Uncertain);
+            Assert.Equal(float.PositiveInfinity, Get<float>(pinf));
+            Assert.Equal("ss.reason.infinite", pinf.Reason);
+
+            var ninf = await WaitQuality(m, "d1", "b.ninf", PointQuality.Uncertain);
+            Assert.Equal(float.NegativeInfinity, Get<float>(ninf));
+
+            var nan = await WaitQuality(m, "d1", "b.nan", PointQuality.Uncertain);
+            Assert.True(float.IsNaN(Get<float>(nan)), "NaN 应原样解码");
+            Assert.Equal("ss.reason.nan", nan.Reason);
+
             Assert.Equal(0.0, Get<double>(await WaitGood(m, "d1", "b.dzero")));
             Assert.Equal(0xFFFF, Get<ushort>(await WaitGood(m, "d1", "b.max")));
             Assert.Equal(0x0000, Get<ushort>(await WaitGood(m, "d1", "b.min")));
             Assert.Equal(string.Empty, Get<string>(await WaitGood(m, "d1", "b.empty")));
             Assert.Equal("ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ", Get<string>(await WaitGood(m, "d1", "b.full")));
+
+            // 门面显示侧：非 Good 一律返回全局 nullText，绝不把 NaN/Inf 当好值显示
+            Assert.Equal("--", m.GetValue("d1", "b.nan"));
         }
         finally
         {

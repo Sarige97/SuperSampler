@@ -67,6 +67,8 @@ public class WritePipelineTests
         // 写入超时但已生效：回读一致 → 按成功定论（docs/02 指示）
         Assert.Equal(WriteOutcome.Succeeded, result.Outcome);
         Assert.Equal(1, link.ReadCalls);
+        // GATE-1：超时后绝不自动重写——写请求只发一次，改用回读定论
+        Assert.Equal(1, link.WriteSingleCallCount);
     }
 
     /// <summary>
@@ -85,6 +87,8 @@ public class WritePipelineTests
         Assert.Equal(WriteOutcome.Failed, result.Outcome);
         Assert.NotNull(result.Error);
         Assert.Equal(1, link.ReadCalls);
+        // GATE-1：回读不一致判 Failed（明确失败，可安全重试的是宿主）——写管道自身也不重写
+        Assert.Equal(1, link.WriteSingleCallCount);
     }
 
     [Fact]

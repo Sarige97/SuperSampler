@@ -217,4 +217,66 @@ public class PointCodecGapTests
         Assert.Equal(PointQuality.Bad, decoded.Quality);
         Assert.Equal("ss.reason.shortFrame", decoded.Reason);
     }
+
+    // ─────────────── G-C-8：非有限浮点一律 Uncertain（ADR D32 / GATE-3） ───────────────
+
+    [Theory]
+    [InlineData(0x7FC0, 0x0000, "ss.reason.nan")]
+    [InlineData(0x7F80, 0x0000, "ss.reason.infinite")]
+    [InlineData(0xFF80, 0x0000, "ss.reason.infinite")]
+    public void Gc8_non_finite_float32_decodes_as_uncertain_with_value_preserved(
+        ushort first, ushort second, string expectedReason)
+    {
+        var point = Pt(p => { p.DataType = RuntimeDataType.Float32; p.Length = 2; });
+        var decoded = PointCodec.Decode(point, new[] { first, second }, T);
+
+        Assert.False(decoded.IsGood);                        // 绝不产出伪 Good（GATE-3）
+        Assert.Equal(PointQuality.Uncertain, decoded.Quality);
+        Assert.Equal(expectedReason, decoded.Reason);
+        Assert.NotNull(decoded.Value);                       // 值保留供排查
+        Assert.True(decoded.Value is float f && (float.IsNaN(f) || float.IsInfinity(f)));
+    }
+
+    [Theory]
+    [InlineData(0x7FF8, 0x0000, 0x0000, 0x0000, "ss.reason.nan")]
+    [InlineData(0x7FF0, 0x0000, 0x0000, 0x0000, "ss.reason.infinite")]
+    [InlineData(0xFFF0, 0x0000, 0x0000, 0x0000, "ss.reason.infinite")]
+    public void Gc8_non_finite_float64_decodes_as_uncertain_with_value_preserved(
+        ushort w0, ushort w1, ushort w2, ushort w3, string expectedReason)
+    {
+        var point = Pt(p => { p.DataType = RuntimeDataType.Float64; p.Length = 4; });
+        var decoded = PointCodec.Decode(point, new[] { w0, w1, w2, w3 }, T);
+
+        Assert.False(decoded.IsGood);
+        Assert.Equal(PointQuality.Uncertain, decoded.Quality);
+        Assert.Equal(expectedReason, decoded.Reason);
+        Assert.True(decoded.Value is double d && (double.IsNaN(d) || double.IsInfinity(d)));
+    }
+
+    [Fact]
+    public void Gc8_non_finite_after_scaling_still_uncertain()
+    {
+        // 有 Scale 时工程值走 double 分支，同样必须降级
+        var point = Pt(p =>
+        {
+            p.DataType = RuntimeDataType.Float32;
+            p.Length = 2;
+            p.Scale = new ScaleConfig { Factor = 2.0 };
+        });
+        var decoded = PointCodec.Decode(point, new ushort[] { 0x7FC0, 0x0000 }, T);
+
+        Assert.Equal(PointQuality.Uncertain, decoded.Quality);
+        Assert.Equal("ss.reason.nan", decoded.Reason);
+    }
+
+    [Fact]
+    public void Gc8_finite_float_stays_good()
+    {
+        // 反向锁定：正常有限值不得被误降级
+        var point = Pt(p => { p.DataType = RuntimeDataType.Float32; p.Length = 2; });
+        var decoded = PointCodec.Decode(point, new ushort[] { 0x4048, 0xF5C3 }, T); // 3.14f
+
+        Assert.True(decoded.IsGood);
+        Assert.Equal(3.14f, Assert.IsType<float>(decoded.Value), 3);
+    }
 }

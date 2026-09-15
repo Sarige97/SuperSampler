@@ -160,6 +160,19 @@ public static class PointCodec
                 engineering = point.Scale.Apply(rawDouble);
             }
 
+            // ADR D32（GATE-3）：非有限浮点降级为 Uncertain——值保留供排查，绝不当 Good。
+            // NaN/±Inf 出现在工程量里意味着溢出、脏寄存器或未初始化，不是可信测量。
+            if (engineering is double d)
+            {
+                if (double.IsNaN(d)) return PointValue.Uncertain(engineering, "ss.reason.nan", timestamp);
+                if (double.IsInfinity(d)) return PointValue.Uncertain(engineering, "ss.reason.infinite", timestamp);
+            }
+            else if (engineering is float f)
+            {
+                if (float.IsNaN(f)) return PointValue.Uncertain(engineering, "ss.reason.nan", timestamp);
+                if (float.IsInfinity(f)) return PointValue.Uncertain(engineering, "ss.reason.infinite", timestamp);
+            }
+
             return PointValue.Good(engineering, timestamp);
         }
         catch (Exception ex)
