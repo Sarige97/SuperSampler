@@ -1,0 +1,4 @@
+﻿seq,host_time,event_type,error_class,code,source,level,message_key,context
+839,2026-09-15 23:34:18.484,LinkError,LinkDown,MODBUS.LINK,Device,Error,ss.error.comm,"device=IM-01, transport=lineA, unit=1, InputRegister@0, elapsed=1000ms, consecutive=11"
+1846,2026-09-15 23:34:44.685,TimeoutError,Transient,MODBUS.TIMEOUT,Device,Error,ss.error.comm,"device=IM-01, transport=lineA, unit=1, InputRegister@30, elapsed=2093ms, consecutive=14"
+1956,2026-09-15 23:34:47.687,TimeoutError,Transient,MODBUS.TIMEOUT,Device,Error,ss.error.comm,"device=IM-01, transport=lineA, unit=1, Coil@4, elapsed=3000ms, consecutive=4"

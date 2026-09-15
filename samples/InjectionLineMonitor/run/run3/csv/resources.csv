@@ -1,0 +1,3 @@
+﻿host_time,at_s,threads,handles,managed_heap_mb,value_events,error_events
+2026-09-15 23:36:32.464,0.0,17,319,1.62,0,0
+2026-09-15 23:37:02.475,30.0,24,428,1.76,1259,3

@@ -1,0 +1,80 @@
+{"ts": "2026-09-15 23:16:04.615", "epoch": 1789485364.616, "event": "listen", "port": 2502, "note": "P1-LINE-A tcp → 127.0.0.1:16002"}
+{"ts": "2026-09-15 23:16:04.615", "epoch": 1789485364.616, "event": "listen", "port": 2503, "note": "P2-LINE-B tcp → 127.0.0.1:16003"}
+{"ts": "2026-09-15 23:16:04.615", "epoch": 1789485364.616, "event": "listen", "port": 2504, "note": "P3-VERIFY tcp → 127.0.0.1:16004"}
+{"ts": "2026-09-15 23:16:04.616", "epoch": 1789485364.617, "event": "listen", "port": 2505, "note": "P4-RTU-LINE rtuOverTcp → 127.0.0.1:16005"}
+{"ts": "2026-09-15 23:16:04.616", "epoch": 1789485364.617, "event": "ready", "note": "4 个端口就绪 | 后端 127.0.0.1 | 控制台 关(--no-console) | 控制文件 D:/IT/SuperModbus/SuperSampler/samples/InjectionLineMonitor/run/ctl.json | 控制端口 -"}
+{"ts": "2026-09-15 23:16:04.616", "epoch": 1789485364.617, "event": "ctl_file", "note": "轮询控制文件 D:/IT/SuperModbus/SuperSampler/samples/InjectionLineMonitor/run/ctl.json（间隔 0.2s），回执 D:/IT/SuperModbus/SuperSampler/samples/InjectionLineMonitor/run/ctl.ack.json"}
+{"ts": "2026-09-15 23:32:34.113", "epoch": 1789486354.114, "event": "offline", "port": 2502, "decision": "refuse", "note": "P1-LINE-A(:2502) 掉线 ← drill-refuse-3s [refuse]，3s 后自动恢复"}
+{"ts": "2026-09-15 23:32:34.115", "epoch": 1789486354.116, "event": "ctl_file", "note": "执行 seq=101，1 条命令，ok=True"}
+{"ts": "2026-09-15 23:32:37.112", "epoch": 1789486357.113, "event": "listen", "port": 2502, "note": "P1-LINE-A tcp → 127.0.0.1:16002"}
+{"ts": "2026-09-15 23:32:37.112", "epoch": 1789486357.113, "event": "online", "port": 2502, "note": "恢复在线 ← 到时自动恢复(3s)（离线 2.999s）"}
+{"ts": "2026-09-15 23:32:59.153", "epoch": 1789486379.153, "event": "offline", "port": 2502, "decision": "silent", "note": "P1-LINE-A(:2502) 掉线 ← drill-silent-5s [silent]，5s 后自动恢复"}
+{"ts": "2026-09-15 23:32:59.155", "epoch": 1789486379.155, "event": "ctl_file", "note": "执行 seq=102，1 条命令，ok=True"}
+{"ts": "2026-09-15 23:33:04.164", "epoch": 1789486384.165, "event": "online", "port": 2502, "note": "恢复在线 ← 到时自动恢复(5s)（离线 5.012s）"}
+{"ts": "2026-09-15 23:34:17.269", "epoch": 1789486457.269, "event": "offline", "port": 2502, "decision": "refuse", "note": "P1-LINE-A(:2502) 掉线 ← drill-refuse-3s [refuse]，3s 后自动恢复"}
+{"ts": "2026-09-15 23:34:17.270", "epoch": 1789486457.27, "event": "ctl_file", "note": "执行 seq=101，1 条命令，ok=True"}
+{"ts": "2026-09-15 23:34:20.272", "epoch": 1789486460.273, "event": "listen", "port": 2502, "note": "P1-LINE-A tcp → 127.0.0.1:16002"}
+{"ts": "2026-09-15 23:34:20.272", "epoch": 1789486460.273, "event": "online", "port": 2502, "note": "恢复在线 ← 到时自动恢复(3s)（离线 3.003s）"}
+{"ts": "2026-09-15 23:34:42.195", "epoch": 1789486482.196, "event": "offline", "port": 2502, "decision": "silent", "note": "P1-LINE-A(:2502) 掉线 ← drill-silent-5s [silent]，5s 后自动恢复"}
+{"ts": "2026-09-15 23:34:42.196", "epoch": 1789486482.197, "event": "ctl_file", "note": "执行 seq=102，1 条命令，ok=True"}
+{"ts": "2026-09-15 23:34:47.175", "epoch": 1789486487.176, "event": "online", "port": 2502, "note": "恢复在线 ← 到时自动恢复(5s)（离线 4.980s）"}
+{"ts": "2026-09-15 23:36:51.088", "epoch": 1789486611.088, "event": "offline", "port": 2502, "decision": "silent", "note": "P1-LINE-A(:2502) 掉线 ← drill3-silent-10s [silent]，10s 后自动恢复"}
+{"ts": "2026-09-15 23:36:51.089", "epoch": 1789486611.089, "event": "ctl_file", "note": "执行 seq=201，1 条命令，ok=True"}
+{"ts": "2026-09-15 23:37:01.090", "epoch": 1789486621.09, "event": "online", "port": 2502, "note": "恢复在线 ← 到时自动恢复(10s)（离线 10.002s）"}
+{"ts": "2026-09-15 23:38:12.181", "epoch": 1789486692.181, "event": "offline", "port": 2502, "decision": "refuse", "note": "P1-LINE-A(:2502) 掉线 ← drill4-refuse-8s [refuse]，8s 后自动恢复"}
+{"ts": "2026-09-15 23:38:12.183", "epoch": 1789486692.183, "event": "ctl_file", "note": "执行 seq=301，1 条命令，ok=True"}
+{"ts": "2026-09-15 23:38:20.175", "epoch": 1789486700.176, "event": "listen", "port": 2502, "note": "P1-LINE-A tcp → 127.0.0.1:16002"}
+{"ts": "2026-09-15 23:38:20.175", "epoch": 1789486700.176, "event": "online", "port": 2502, "note": "恢复在线 ← 到时自动恢复(8s)（离线 7.995s）"}
+{"ts": "2026-09-15 23:39:37.518", "epoch": 1789486777.519, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:37.519", "epoch": 1789486777.52, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:37.521", "epoch": 1789486777.522, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:38.520", "epoch": 1789486778.52, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:38.532", "epoch": 1789486778.533, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:38.617", "epoch": 1789486778.618, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:39.521", "epoch": 1789486779.522, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:39.524", "epoch": 1789486779.525, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:39.610", "epoch": 1789486779.61, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:40.515", "epoch": 1789486780.515, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:40.517", "epoch": 1789486780.517, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:40.712", "epoch": 1789486780.712, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:41.521", "epoch": 1789486781.521, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:41.524", "epoch": 1789486781.525, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:41.707", "epoch": 1789486781.707, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:42.515", "epoch": 1789486782.516, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:42.516", "epoch": 1789486782.516, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:42.805", "epoch": 1789486782.805, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:43.515", "epoch": 1789486783.515, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:43.517", "epoch": 1789486783.518, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:43.798", "epoch": 1789486783.798, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:44.518", "epoch": 1789486784.518, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:44.518", "epoch": 1789486784.519, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:44.904", "epoch": 1789486784.904, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:45.516", "epoch": 1789486785.516, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:45.516", "epoch": 1789486785.517, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:45.890", "epoch": 1789486785.891, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:46.515", "epoch": 1789486786.515, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:46.615", "epoch": 1789486786.616, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:46.996", "epoch": 1789486786.996, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:47.516", "epoch": 1789486787.517, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:47.609", "epoch": 1789486787.609, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:47.995", "epoch": 1789486787.995, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:48.517", "epoch": 1789486788.518, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:48.711", "epoch": 1789486788.712, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:49.084", "epoch": 1789486789.084, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:49.516", "epoch": 1789486789.516, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:49.702", "epoch": 1789486789.703, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:50.079", "epoch": 1789486790.08, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:50.516", "epoch": 1789486790.517, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:50.806", "epoch": 1789486790.806, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:51.182", "epoch": 1789486791.183, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:51.516", "epoch": 1789486791.517, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:51.798", "epoch": 1789486791.799, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:52.172", "epoch": 1789486792.172, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:52.516", "epoch": 1789486792.516, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:52.898", "epoch": 1789486792.899, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:53.272", "epoch": 1789486793.272, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:53.516", "epoch": 1789486793.516, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:53.892", "epoch": 1789486793.892, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}
+{"ts": "2026-09-15 23:39:54.266", "epoch": 1789486794.267, "event": "backend_unreachable", "port": 2503, "note": "后端 127.0.0.1:16003 连接失败"}
+{"ts": "2026-09-15 23:39:54.517", "epoch": 1789486794.518, "event": "backend_unreachable", "port": 2504, "note": "后端 127.0.0.1:16004 连接失败"}
+{"ts": "2026-09-15 23:39:54.990", "epoch": 1789486794.991, "event": "backend_unreachable", "port": 2502, "note": "后端 127.0.0.1:16002 连接失败"}

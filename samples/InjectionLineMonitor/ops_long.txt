@@ -1,0 +1,43 @@
+# 30 分钟长稳：周期性操作（时间单位为 s/m）
+20s write IM-01/im01.cavitySetTemp 220
+28s show IM-01/im01.barrel1Temp
+140s write IM-01/im01.cavitySetTemp 221
+148s show IM-01/im01.barrel1Temp
+155s pulse IM-01/im01.moldCloseJog
+260s write IM-01/im01.cavitySetTemp 222
+268s show IM-01/im01.barrel1Temp
+280s ack env.highTemp
+380s write IM-01/im01.cavitySetTemp 223
+388s show IM-01/im01.barrel1Temp
+405s write IM-01/im01.cavitySetTemp 400
+500s write IM-01/im01.cavitySetTemp 224
+508s show IM-01/im01.barrel1Temp
+515s pulse IM-01/im01.moldCloseJog
+620s write IM-01/im01.cavitySetTemp 225
+628s show IM-01/im01.barrel1Temp
+740s write IM-01/im01.cavitySetTemp 226
+748s show IM-01/im01.barrel1Temp
+760s ack env.highTemp
+860s write IM-01/im01.cavitySetTemp 227
+868s show IM-01/im01.barrel1Temp
+875s pulse IM-01/im01.moldCloseJog
+980s write IM-01/im01.cavitySetTemp 220
+988s show IM-01/im01.barrel1Temp
+1005s write IM-01/im01.cavitySetTemp 400
+1100s write IM-01/im01.cavitySetTemp 221
+1108s show IM-01/im01.barrel1Temp
+1220s write IM-01/im01.cavitySetTemp 222
+1228s show IM-01/im01.barrel1Temp
+1235s pulse IM-01/im01.moldCloseJog
+1240s ack env.highTemp
+1340s write IM-01/im01.cavitySetTemp 223
+1348s show IM-01/im01.barrel1Temp
+1460s write IM-01/im01.cavitySetTemp 224
+1468s show IM-01/im01.barrel1Temp
+1580s write IM-01/im01.cavitySetTemp 225
+1588s show IM-01/im01.barrel1Temp
+1595s pulse IM-01/im01.moldCloseJog
+1605s write IM-01/im01.cavitySetTemp 400
+1700s write IM-01/im01.cavitySetTemp 226
+1708s show IM-01/im01.barrel1Temp
+1720s ack env.highTemp

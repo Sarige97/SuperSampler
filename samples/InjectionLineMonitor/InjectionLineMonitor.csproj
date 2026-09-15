@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net46</TargetFramework>
+    <AssemblyName>InjectionLineMonitor</AssemblyName>
+    <RootNamespace>InjectionLineMonitor</RootNamespace>
+    <!-- 控制台宿主的启动对象就是静态 Main，无需启动对象设置文件 -->
+    <StartupObject>InjectionLineMonitor.Program</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SuperSampler.Core\SuperSampler.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 配置与脚本随程序集一起输出，便于从 bin 目录直接起（i18n 用相对配置文件的路径寻址） -->
+  <ItemGroup>
+    <None Include="line.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="ops.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="i18n\ui_zh_CN.i18n" CopyToOutputDirectory="PreserveNewest" Link="i18n\ui_zh_CN.i18n" />
+    <None Include="i18n\ui_en_US.i18n" CopyToOutputDirectory="PreserveNewest" Link="i18n\ui_en_US.i18n" />
+  </ItemGroup>
+</Project>

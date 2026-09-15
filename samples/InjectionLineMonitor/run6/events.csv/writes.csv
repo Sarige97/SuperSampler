@@ -1,0 +1,3 @@
+﻿seq,host_time,device,point,value,user,outcome,message
+342,2026-09-16 00:44:06.820,IM-01,im01.cavitySetTemp,205,op01,Succeeded,-
+812,2026-09-16 00:44:17.598,IM-01,im01.moldCloseJog,True,op01,Succeeded,-

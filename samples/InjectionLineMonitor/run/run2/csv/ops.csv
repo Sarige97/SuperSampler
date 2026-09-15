@@ -1,0 +1,5 @@
+﻿host_time,at_s,index,command,target,arg,outcome,verify_mismatch,readback,readback_quality,detail
+2026-09-15 23:34:20.490,22.540,7,write,IM-01/im01.cavitySetTemp,240,Succeeded,False,240 ℃[Good],Good,
+2026-09-15 23:34:32.955,35.004,11,write,IM-01/im01.cavitySetTemp,232,Succeeded,False,232 ℃[Good],Good,
+2026-09-15 23:34:47.690,49.739,14,write,IM-01/im01.cavitySetTemp,236,Succeeded,False,236 ℃[Good],Good,
+2026-09-15 23:34:59.955,62.004,19,write,IM-01/im01.cavitySetTemp,234,Succeeded,False,234 ℃[Good],Good,

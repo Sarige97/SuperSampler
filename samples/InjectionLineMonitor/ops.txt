@@ -1,0 +1,56 @@
+# ============================================================================
+# InjectionLineMonitor 操作脚本
+# ----------------------------------------------------------------------------
+# 语法：  <时间> <命令> <参数...>
+#   时间   从宿主启动算起，后缀 s=秒 / m=分（缺省 s）；支持小数，如 12.5s
+#   命令   write <设备>/<点位> <值>    走完整写管道（可写性/范围/审计/回读）
+#          write <点位> <值>           点位 id 全库唯一时可省略设备前缀
+#          pulse <设备>/<点位>         点动：写 true，框架按 pulseMs 自动写回 false
+#          ack   <设备>/<点位> [报警id]  报警确认（缺省确认该点全部报警）
+#          show  <设备>/<点位>         立即打印一次值/质量/时间戳
+#          note  <文本>                在日志里插一条分隔说明
+#   # 开头为注释；空行忽略
+#
+# 本脚本的剧情（对着复杂桩的真实行为走）：
+#   10s 改料筒设定（int16 + 缩放 0.1 + verify 回读）
+#   15s 点动合模（pulseMs=800：写 true 后框架自动写回 false）
+#   20s 故意越上限写设定值  -> Rejected（未发通讯）
+#   25s 故意写只读点        -> Rejected
+#   30s 空调设定抬到 28.0℃ -> 车间温度向设定爬升 -> 高温报警（延时 2s + 死区 0.3）
+#       注意：Write min/max 与值都按工程量（28.0℃），不是缩放前的原始字 280
+#   45s 确认高温报警（latch + ackRequired）
+#   55s 写保护从站：单字写成功（FC06）；60s 多字写被设备拒绝 -> Failed（错误码 0x02）
+#   70s 急停置位 -> 注塑机报警位（digital 报警）触发
+#   80s 急停复位 -> 报警位回落，digital 报警清除
+#   85s 确认 digital 报警
+#   90s 空调设定回调 24.0℃ -> 温度回落出死区，高温报警清除
+#  110s 写原料批次号（ASCII 定长字符串点）
+# ============================================================================
+
+ 5s note 开机巡检：先看一屏关键点位
+ 8s show env01.roomTemp
+
+10s write IM-01/im01.cavitySetTemp 235
+15s pulse IM-01/im01.moldCloseJog
+
+20s write im01.cavitySetTemp 400
+25s write im01.totalMolds 100
+
+30s write ENV-01/env01.acSetTemp 28.0
+40s write im01.ratedPower 45.5
+40s write EM-01/em01.demandThreshold 320
+
+ 45s ack env01.roomTemp env.highTemp
+50s show env01.roomTemp
+
+55s write PROT-02/prot02.singleWord 1234
+60s write PROT-02/prot02.twoWordValue 123456
+
+ 70s write IM-01/im01.estop 1
+ 72s show im01.faultAlarm
+ 80s write IM-01/im01.estop 0
+ 85s ack im01.faultAlarm im.fault
+
+ 90s write env01.acSetTemp 24.0
+110s write GW-LINE-B/dry01.materialBatch BATCH-2026W38
+120s show GW-LINE-B/dry01.materialBatch

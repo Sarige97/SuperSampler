@@ -1,0 +1,17 @@
+# ============================================================================
+# 补充演练：长断线（silent 10s）内的写入 —— 目的看 WriteResult 的 Failed / Indeterminate 分支
+#   注入：T+20s 断路器 offline silent 10s @2502（inject3.sh）
+# ============================================================================
+
+ 5s note 长断线写演练开始
+ 8s show IM-01/im01.moldTemp
+15s write IM-01/im01.cavitySetTemp 232
+
+18s note 断路器将在 T+20s 起 silent 10s
+21s write IM-01/im01.cavitySetTemp 236
+26s show IM-01/im01.moldTemp
+
+33s note 恢复后（期待 Good）
+33s show IM-01/im01.moldTemp
+40s write IM-01/im01.cavitySetTemp 234
+45s note 演练结束

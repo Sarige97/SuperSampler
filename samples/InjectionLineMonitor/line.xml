@@ -1,0 +1,953 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================================
+  InjectionLineMonitor —— 注塑产线监视线（宿主样例配置）
+  ============================================================================
+
+  数据源：_simulator_design/tools/complex_sim.py（复杂工业桩镜像，内部口 16002-16005）
+          经 _simulator_design/tools/breaker.py（可编程断路器，公共口 2502-2505）转发。
+  点表真源：_simulator_design/tools/complex_points.json（区/偏移/类型/缩放/读写/初值）
+  设备语义：_simulator_design/tools/复杂桩说明.md
+
+  为什么走公共口：断路器能在链路上注入 refuse/silent/drop/delay/badcrc，
+  宿主断线韧性与质量回退的演练必须经过它。直连内部口时把 port 改成 1600x 即可。
+
+  现场口径（照着这三点写就能对上桩）：
+    1. 桩的线上字序是 ABCD，故 PointSet/Defaults@swap="none"；Global@swap 仍是通用默认 word。
+    2. 地址写「0 基协议地址」（addrFormat 缺省 protocol），不是 3xxxx/4xxxx 手册号。
+    3. 网关下多从站：Device 只声明网关自身的 unitId，点位用 Point@unitId 指向真实从站。
+  ============================================================================
+-->
+<HostConfig schemaVersion="3.0" unsupportedPolicy="warn">
+
+  <Meta>
+    <ProjectName>注塑产线数据采集（InjectionLineMonitor）</ProjectName>
+    <Comment>1 号注塑机 + 产线B网关（模温机/干燥机/机械手）+ 总电表 + 车间环境</Comment>
+    <Author>Sarige</Author>
+    <CreatedAt>2026-09-15</CreatedAt>
+    <Revision>1</Revision>
+    <Tags>
+      <Tag>注塑</Tag>
+      <Tag>宿主样例</Tag>
+    </Tags>
+  </Meta>
+
+  <!--
+    Global：所有下级未显式声明时的兜底。
+      Polling   默认周期与请求超时（本项目实际节奏由 ScanGroups 决定）
+      Retry     请求级重试；断路器 drill 时想看清「一次失败」可把 count 调到 1
+      Scheduler 单次读的合并上限与散点合并容差
+      Quality   onCommError=bad（通讯失败置 Bad）
+                onCommErrorValue=null（不保留旧值，防止旧值伪装成现场值）
+                staleAfterMs 仅被加载器解析：框架不做陈旧判定，由宿主自己按时间戳算
+  -->
+  <Global language="zh_CN" fallbackLanguage="en_US" timeZone="Asia/Shanghai" nullText="--" swap="word">
+    <Polling rateMs="1000" requestTimeoutMs="1000"/>
+    <Retry count="1" intervalMs="100" backoff="exponential" onLinkError="reconnect" onException="fail"
+           escalateAfter="3" budgetMs="3000"/>
+    <Scheduler maxRegistersPerRead="125" maxBitsPerRead="2000" mergeGap="2"/>
+    <Quality onCommError="bad" onCommErrorValue="null" staleAfterMs="5000"/>
+  </Global>
+
+  <!-- i18n 与配置同目录：加载器按「配置文件所在目录」解析相对路径 -->
+  <I18n>
+    <Files>
+      <File lang="zh_CN" path="i18n/ui_zh_CN.i18n"/>
+      <File lang="en_US" path="i18n/ui_en_US.i18n"/>
+    </Files>
+  </I18n>
+
+  <!--
+    扫描组即现场节奏：
+      fast   500ms  只看过程量（状态字/阶段/周期）
+      normal 1000ms 工艺量（温度/压力/料位/计数器）
+      slow   5000ms 慢变量（累计能耗/时长/铭牌字符串/时刻）
+  -->
+  <ScanGroups>
+    <ScanGroup id="fast" mode="poll" rateMs="500"/>
+    <ScanGroup id="normal" mode="poll" rateMs="1000" jitterMs="50"/>
+    <ScanGroup id="slow" mode="poll" rateMs="5000" jitterMs="200"/>
+  </ScanGroups>
+
+  <!--
+    三条链路都指向断路器的公共口；断路器不在时直连桩的内部口（16002-16004）。
+    requestTimeoutMs=1000 是现场经验值：桩的普通从站 100ms 内应答，1s 足够分辨「慢」与「断」。
+  -->
+  <Transports>
+    <Transport id="lineA" variant="tcp" enabled="true" host="127.0.0.1" port="2502"
+               connectTimeoutMs="2000" requestTimeoutMs="1000" gapMs="0">
+      <Comment>产线A 注塑机：公共口 2502 → 桩内部口 16002（unit 1 = IM-01）</Comment>
+      <Retry count="1" intervalMs="100"/>
+    </Transport>
+
+    <Transport id="lineB" variant="tcp" enabled="true" host="127.0.0.1" port="2503"
+               connectTimeoutMs="2000" requestTimeoutMs="1000" gapMs="0">
+      <Comment>产线B 网关：公共口 2503 → 桩内部口 16003（unit 2/3/4 = 模温机/干燥机/机械手）</Comment>
+    </Transport>
+
+    <Transport id="util" variant="tcp" enabled="true" host="127.0.0.1" port="2504"
+               connectTimeoutMs="2000" requestTimeoutMs="1000" gapMs="0">
+      <Comment>公用：公共口 2504 → 桩内部口 16004（unit 5 总电表 / unit 6 车间环境）</Comment>
+    </Transport>
+  </Transports>
+
+  <!--
+    报警等级：框架只校验 @id 引用是否悬空；name/color/sound 是给宿主渲染的，
+    框架不消费（加载器会记入 Warnings，见宿主启动摘要的 Warnings 计数）。
+  -->
+  <AlarmClasses>
+    <AlarmClass id="Critical" name="${ALC_CRITICAL}" color="#D32F2F"/>
+    <AlarmClass id="High" name="${ALC_HIGH}" color="#F57C00"/>
+    <AlarmClass id="Low" name="${ALC_LOW}" color="#1976D2"/>
+  </AlarmClasses>
+
+  <!--
+    设备 = 一条链路上的一个从站（transport + unitId 唯一）。
+    注意 GW-LINE-B：它就是「网关」，unitId=2 只是它自己的缺省从站号；
+    网关下面的 3 号/4 号从站在点位上用 unitId 覆盖（见 LineB_Points）。
+  -->
+  <Devices>
+    <Device id="IM-01" name="1号注塑机" enabled="true" transport="lineA" unitId="1"
+            pointSet="IM01_Points" scanGroup="normal" swap="none">
+      <Comment>产线A 主机：7 阶段循环、热惯性、模数与次品统计</Comment>
+    </Device>
+
+    <Device id="GW-LINE-B" name="产线B网关" enabled="true" transport="lineB" unitId="2"
+            pointSet="LineB_Points" scanGroup="normal" swap="none">
+      <Comment>网关下多从站：它的点位分别指向从站 2 模温机 / 3 干燥机 / 4 机械手</Comment>
+    </Device>
+
+    <Device id="EM-01" name="总电表" enabled="true" transport="util" unitId="5"
+            pointSet="EM01_Points" scanGroup="slow" swap="none">
+      <Comment>三相电压电流、电能累计与冻结、需量、功率因数</Comment>
+    </Device>
+
+    <Device id="ENV-01" name="车间环境" enabled="true" transport="util" unitId="6"
+            pointSet="ENV01_Points" scanGroup="normal" swap="none">
+      <Comment>温湿度/CO2/噪音；温度是本次演练的报警源</Comment>
+    </Device>
+
+    <Device id="PROT-02" name="写保护从站" enabled="true" transport="util" unitId="12"
+            pointSet="Prot02_Points" scanGroup="slow" swap="none">
+      <Comment>桩自带的写保护从站（PROT-O2）：单字写允许、多字写回异常码 0x02。
+               宿主用它跑通 WriteResult 的 Failed 分支（明确失败、可安全重试）</Comment>
+    </Device>
+  </Devices>
+
+  <PointSets>
+
+    <!-- ══════════════════════ 1 号注塑机（unit 1） ══════════════════════ -->
+    <PointSet id="IM01_Points">
+      <Comment>注塑机点表：3 个块读窗口 + 散点 + 计算点；类型覆盖 int16/uint16/uint32/int32/float32/float64/string/bcd/datetime/bool/位域</Comment>
+      <Defaults area="input" dataType="uint16" scanGroup="normal" swap="none"/>
+
+      <Blocks>
+        <!-- 监视区 3x0..3x19：一次请求读完状态与计数（500ms 组） -->
+        <Block id="im.monitor" area="input" start="0" count="20" scanGroup="fast" swap="none">
+          <Comment>块内点位共享同一次请求的结果；块决定 area/unitId/scanGroup，点位不得再写</Comment>
+
+          <Point id="im01.statusWord" name="运行状态字" address="0" bitRange="0-7">
+            <Comment>位域：bit0 电源，bit1..7 各阶段</Comment>
+          </Point>
+
+          <Point id="im01.alarmCode" name="报警码" address="1">
+            <Format mapOn="engineering">
+              <Map>
+                <Item key="0">无</Item>
+                <Item key="1">料筒超温</Item>
+                <Item key="2">液压过载</Item>
+                <Item key="3">润滑故障</Item>
+              </Map>
+            </Format>
+          </Point>
+
+          <Point id="im01.totalMolds" name="总模数" address="3" dataType="uint32"/>
+          <Point id="im01.goodParts" name="合格品数" address="5" dataType="uint32"/>
+          <Point id="im01.rejectParts" name="次品数" address="7" dataType="uint32"/>
+
+          <Point id="im01.cycleTime" name="当前周期时间" address="9" unit="${UNIT_S}">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_S}"/>
+          </Point>
+
+          <Point id="im01.avgCycleTime" name="平均周期时间" address="10" unit="${UNIT_S}">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_S}"/>
+          </Point>
+
+          <Point id="im01.oee" name="稼动率" address="11" unit="${UNIT_PCT}">
+            <Format decimals="0" suffix=" ${UNIT_PCT}"/>
+          </Point>
+
+          <Point id="im01.stage" name="注塑阶段" address="12">
+            <Format mapOn="engineering">
+              <Map>
+                <Item key="0">待机</Item>
+                <Item key="1">合模</Item>
+                <Item key="2">射胶</Item>
+                <Item key="3">保压</Item>
+                <Item key="4">熔胶</Item>
+                <Item key="5">冷却</Item>
+                <Item key="6">开模</Item>
+              </Map>
+            </Format>
+          </Point>
+
+          <Point id="im01.batchNo" name="生产批次号" address="13" dataType="bcd" length="1">
+            <Bcd digits="4"/>
+          </Point>
+
+          <Point id="im01.prodTime" name="当前生产时刻" address="14" dataType="datetime" length="6">
+            <DateTime format="plc6"/>
+            <Format pattern="yyyy-MM-dd HH:mm:ss"/>
+          </Point>
+        </Block>
+
+        <!-- 工艺量区 3x30..3x59：温度/压力/位置/能量（1s 组） -->
+        <Block id="im.process" area="input" start="30" count="30" scanGroup="normal" swap="none">
+          <Point id="im01.barrel1Temp" name="料筒1段温度" address="30" dataType="int16"
+                 unit="${UNIT_C}" range="-20..400">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+          </Point>
+
+          <Point id="im01.barrel5Temp" name="料筒5段温度" address="34" dataType="int16"
+                 unit="${UNIT_C}" range="-20..400">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+          </Point>
+
+          <Point id="im01.moldTemp" name="模具实际温度" address="35" dataType="int16"
+                 unit="${UNIT_C}" range="-20..300">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+          </Point>
+
+          <Point id="im01.oilTemp" name="液压油温" address="36" dataType="int16"
+                 unit="${UNIT_C}" range="0..120">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+          </Point>
+
+          <Point id="im01.injectPressure" name="射胶压力" address="38" unit="${UNIT_BAR}" range="0..250">
+            <Format decimals="0" suffix=" ${UNIT_BAR}"/>
+          </Point>
+
+          <Point id="im01.injectSpeed" name="射胶速度" address="39" unit="${UNIT_PCT}" range="0..100">
+            <Format decimals="0" suffix=" ${UNIT_PCT}"/>
+          </Point>
+
+          <Point id="im01.screwSpeed" name="螺杆转速" address="41" unit="${UNIT_RPM}" range="0..300">
+            <Format decimals="0" suffix=" ${UNIT_RPM}"/>
+          </Point>
+
+          <Point id="im01.clampPressure" name="合模压力" address="43" unit="${UNIT_BAR}" range="0..250">
+            <Format decimals="0" suffix=" ${UNIT_BAR}"/>
+          </Point>
+
+          <Point id="im01.pumpCurrent" name="泵电机电流" address="46" unit="${UNIT_AMP}" range="0..80">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_AMP}"/>
+          </Point>
+
+          <Point id="im01.hydraulicPressure" name="液压泵压力" address="48" unit="${UNIT_BAR}">
+            <Format decimals="0" suffix=" ${UNIT_BAR}"/>
+          </Point>
+
+          <Point id="im01.power" name="瞬时功率" address="49" unit="${UNIT_KW}">
+            <Format decimals="0" suffix=" ${UNIT_KW}"/>
+          </Point>
+
+          <!-- 双字浮点：桩返回 3.14 之类的小数，验证 float32 解码 -->
+          <Point id="im01.meltEnergy" name="熔胶能量" address="53" dataType="float32"
+                 unit="${UNIT_KJ}" range="0..1000">
+            <Format decimals="2" suffix=" ${UNIT_KJ}"/>
+          </Point>
+
+          <!-- 四字浮点：累计能耗，验证 float64 + 字序 -->
+          <Point id="im01.energyTotal" name="累计能耗" address="55" dataType="float64"
+                 unit="${UNIT_KWH}">
+            <Format decimals="3" suffix=" ${UNIT_KWH}"/>
+          </Point>
+
+          <!-- 双点映射 + 钳位：raw 0..10000 → -50.0..200.0 ℃，周期注入 12000 验证钳位 -->
+          <Point id="im01.moldTempDual" name="模具温度(双点)" address="59" unit="${UNIT_C}"
+                 range="-50..200">
+            <Scale mode="linear" rawLow="0" rawHigh="10000" scaledLow="-50" scaledHigh="200">
+              <Clamp mode="both"/>
+            </Scale>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+          </Point>
+        </Block>
+
+        <!-- 参数区 4x0..4x22：可读可写（10s 组，设定值不需要快刷） -->
+        <Block id="im.params" area="holding" start="0" count="23" scanGroup="slow" swap="none">
+          <Point id="im01.workMode" name="工作模式" address="0" access="readwrite">
+            <Format mapOn="engineering">
+              <Map>
+                <Item key="0">手动</Item>
+                <Item key="1">半自动</Item>
+                <Item key="2">全自动</Item>
+              </Map>
+            </Format>
+          </Point>
+
+          <Point id="im01.targetOutput" name="目标产量" address="1" access="readwrite"/>
+
+          <!-- 可写设定值：min/max 范围校验 + verify 回读校验（关键工艺参数） -->
+          <Point id="im01.cavitySetTemp" name="料筒1段设定" address="2" dataType="int16"
+                 access="readwrite" unit="${UNIT_C}" range="0..300">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+            <Write min="150" max="260" step="0.5" verify="true" permission="Operator" confirm="true"/>
+          </Point>
+
+          <Point id="im01.moldSetTemp" name="模具设定温度" address="7" dataType="int16"
+                 access="readwrite" unit="${UNIT_C}" range="0..300">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+            <Write min="20" max="200" step="0.5" verify="true"/>
+          </Point>
+
+          <Point id="im01.holdTime" name="保压时间" address="8" access="readwrite" unit="${UNIT_S}">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_S}"/>
+            <Write min="0" max="30" step="0.1"/>
+          </Point>
+
+          <Point id="im01.coolTime" name="冷却时间" address="9" access="readwrite" unit="${UNIT_S}">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_S}"/>
+            <Write min="0" max="60" step="0.1"/>
+          </Point>
+
+          <Point id="im01.overTempLimit" name="超温报警阈值" address="12" dataType="int16"
+                 access="readwrite" unit="${UNIT_C}">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+            <Write min="100" max="350" step="1"/>
+          </Point>
+
+          <Point id="im01.moldTempDualSet" name="模具温度双点设定" address="14" access="readwrite"
+                 unit="${UNIT_C}" range="0..200">
+            <Scale rawLow="0" rawHigh="10000" scaledLow="-50" scaledHigh="200">
+              <Clamp mode="low"/>
+            </Scale>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+            <Write min="-50" max="200" step="1" verify="true"/>
+          </Point>
+
+          <Point id="im01.energyBudget" name="能耗预算" address="15" dataType="float32"
+                 access="readwrite" unit="${UNIT_KWH}">
+            <Format decimals="1" suffix=" ${UNIT_KWH}"/>
+            <Write min="0" max="10000" step="1"/>
+          </Point>
+
+          <Point id="im01.planHours" name="计划开机时长" address="17" dataType="uint32"
+                 access="readwrite" unit="${UNIT_S}">
+            <Format decimals="0" suffix=" ${UNIT_S}"/>
+          </Point>
+
+          <Point id="im01.ratedPower" name="设备额定功率" address="19" dataType="float64"
+                 access="readwrite" unit="${UNIT_KW}">
+            <Format decimals="2" suffix=" ${UNIT_KW}"/>
+            <Write min="0" max="5000" step="0.1"/>
+          </Point>
+        </Block>
+      </Blocks>
+
+      <Points>
+        <!-- 散点：不在块内，由调度器按 mergeGap 合并（同为寄存器区且地址相邻 -> 一次读） -->
+        <Point id="im01.recipeName" name="配方名" area="holding" address="23" dataType="string"
+               length="12" access="readwrite" scanGroup="slow">
+          <String encoding="ascii" trimNull="true"/>
+        </Point>
+
+        <Point id="im01.bootTime" name="本次开机时刻" area="holding" address="35" dataType="datetime"
+               length="6" access="readwrite" scanGroup="slow">
+          <DateTime format="plc6"/>
+          <Format pattern="yyyy-MM-dd HH:mm:ss"/>
+        </Point>
+
+        <Point id="im01.clampForceDev" name="合模力偏差" area="input" address="100" dataType="int32"
+               unit="${UNIT_KN}" scanGroup="slow">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_KN}"/>
+        </Point>
+
+        <!-- 线圈：点动合模。pulseMs=800：写 true 后框架延时自动写回 false（现场点动语义） -->
+        <Point id="im01.moldCloseJog" name="点动合模" area="coil" address="4" dataType="bool"
+               access="readwrite" scanGroup="normal">
+          <Write pulseMs="800" confirm="false" permission="Operator"/>
+        </Point>
+
+        <Point id="im01.estop" name="急停" area="coil" address="9" dataType="bool"
+               access="readwrite" scanGroup="normal">
+          <Comment>置 1 全停并置故障位；本次演练用它触发注塑机报警位（digital 报警源）</Comment>
+          <Write min="0" max="1"/>
+        </Point>
+
+        <Point id="im01.start" name="启动" area="coil" address="6" dataType="bool"
+               access="readwrite" scanGroup="normal"/>
+
+
+        <Point id="im01.stop" name="停止" area="coil" address="7" dataType="bool"
+               access="readwrite" scanGroup="normal"/>
+
+        <!-- 离散量：设备报警位。digital 报警挂在这里 -->
+        <Point id="im01.faultAlarm" name="注塑机报警" area="discrete" address="3" dataType="bool"
+               scanGroup="fast">
+          <Alarm id="im.fault" type="digital" priority="Critical" latch="true" ackRequired="true"
+                 message="${AL_IM_FAULT}"/>
+        </Point>
+
+        <Point id="im01.ready" name="就绪" area="discrete" address="1" dataType="bool"
+               scanGroup="fast"/>
+        <Point id="im01.producing" name="生产中" area="discrete" address="2" dataType="bool"
+               scanGroup="fast"/>
+      </Points>
+
+      <Calculated>
+        <!-- 计算点：不占地址，读取时按表达式实时求值（缺值返回 Bad，不抛异常） -->
+        <Point id="im01.moldTempDev" name="模具温度偏差" dataType="float64" unit="${UNIT_C}">
+          <Expression>P('im01.moldTemp') - P('im01.moldSetTemp')</Expression>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+        </Point>
+      </Calculated>
+    </PointSet>
+
+    <!-- ═══════════════ 产线B 网关：一台网关挂 3 个从站 ═══════════════ -->
+    <PointSet id="LineB_Points">
+      <Comment>
+        网关下多从站的标准写法：Device 只声明网关地址（unitId=2，模温机），
+        干燥机（3）与机械手（4）的点位各自用 Point@unitId 覆盖。
+        点位级 unitId 只在散点（Points）写法下有效；块内点位不得覆盖 unitId（块整段读只能属于一个从站）。
+      </Comment>
+      <Defaults area="input" dataType="uint16" scanGroup="normal" swap="none"/>
+
+      <Points>
+        <!-- ── 从站 2：模温机 MTC-01 ── -->
+        <Point id="mtc01.actualTemp" name="模温机实际温度" address="2" dataType="int16" unitId="2"
+               unit="${UNIT_C}" range="0..200">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="mtc01.returnTemp" name="模温机回水温度" address="3" dataType="int16" unitId="2"
+               unit="${UNIT_C}" range="0..200">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="mtc01.outletTemp" name="模温机出口温度" address="9" dataType="int16" unitId="2"
+               unit="${UNIT_C}" range="0..200">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="mtc01.pumpPressure" name="泵压力" address="4" unitId="2" unit="${UNIT_BAR}">
+          <Format decimals="0" suffix=" ${UNIT_BAR}"/>
+        </Point>
+
+        <Point id="mtc01.pumpFlow" name="泵流量" address="5" unitId="2" unit="${UNIT_LPM}">
+          <Format decimals="0" suffix=" ${UNIT_LPM}"/>
+        </Point>
+
+        <Point id="mtc01.pumpCurrent" name="泵电流" address="6" unitId="2" unit="${UNIT_AMP}">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_AMP}"/>
+        </Point>
+
+        <Point id="mtc01.heatPower" name="加热功率" address="7" unitId="2" unit="${UNIT_KW}">
+          <Format decimals="0" suffix=" ${UNIT_KW}"/>
+        </Point>
+
+        <Point id="mtc01.runSeconds" name="累计运行时长" address="10" dataType="uint32" unitId="2"
+               scanGroup="slow" unit="${UNIT_S}">
+          <Format decimals="0" suffix=" ${UNIT_S}"/>
+        </Point>
+
+        <Point id="mtc01.tempAvg" name="温度均值" address="12" dataType="float32" unitId="2"
+               unit="${UNIT_C}">
+          <Format decimals="2" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="mtc01.energyTotal" name="累计能耗" address="14" dataType="float64" unitId="2"
+               scanGroup="slow" unit="${UNIT_KWH}">
+          <Format decimals="3" suffix=" ${UNIT_KWH}"/>
+        </Point>
+
+        <Point id="mtc01.tempDual" name="温度双点" address="18" unitId="2" unit="${UNIT_C}"
+               range="0..200">
+          <Scale rawLow="0" rawHigh="10000" scaledLow="0" scaledHigh="200">
+            <Clamp mode="both"/>
+          </Scale>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="mtc01.tempDeviation" name="温度偏差" address="52" dataType="int32" unitId="2"
+               scanGroup="slow" unit="${UNIT_C}">
+          <Scale factor="0.01"/>
+          <Format decimals="2" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="mtc01.ready" name="模温机就绪" area="discrete" address="0" dataType="bool" unitId="2"/>
+        <Point id="mtc01.heating" name="加热中" area="discrete" address="1" dataType="bool" unitId="2"/>
+
+        <Point id="mtc01.setTemp" name="模温机设定温度" area="holding" address="0" dataType="int16"
+               unitId="2" access="readwrite" scanGroup="normal" unit="${UNIT_C}" range="0..200">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+          <Write min="20" max="180" step="0.5" verify="true" permission="Operator"/>
+        </Point>
+
+        <Point id="mtc01.heatingMode" name="加热模式" area="holding" address="1" dataType="uint16"
+               unitId="2" access="readwrite" scanGroup="slow">
+          <Format mapOn="engineering">
+            <Map>
+              <Item key="0">停用</Item>
+              <Item key="1">自动</Item>
+              <Item key="2">手动</Item>
+            </Map>
+          </Format>
+        </Point>
+
+        <Point id="mtc01.serialNo" name="设备序列号" area="holding" address="8" dataType="string"
+               length="10" unitId="2" access="readwrite" scanGroup="slow">
+          <String encoding="ascii" trimNull="true"/>
+        </Point>
+
+        <Point id="mtc01.calibTime" name="校准时刻" area="holding" address="18" dataType="datetime"
+               length="6" unitId="2" access="readwrite" scanGroup="slow">
+          <DateTime format="plc6"/>
+          <Format pattern="yyyy-MM-dd HH:mm:ss"/>
+        </Point>
+
+        <!-- ── 从站 3：干燥机 DRY-01 ── -->
+        <Point id="dry01.dryTemp" name="干燥温度实际" address="2" dataType="int16" unitId="3"
+               unit="${UNIT_C}" range="0..300">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="dry01.dewPoint" name="露点" address="3" dataType="int16" unitId="3"
+               unit="${UNIT_C}" range="-60..40">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="dry01.materialLevel" name="料位" address="4" unitId="3" unit="${UNIT_PCT}"
+               range="0..100">
+          <Format decimals="0" suffix=" ${UNIT_PCT}"/>
+        </Point>
+
+        <Point id="dry01.heatPower" name="干燥加热功率" address="5" unitId="3" unit="${UNIT_KW}">
+          <Format decimals="0" suffix=" ${UNIT_KW}"/>
+        </Point>
+
+        <Point id="dry01.fanCurrent" name="风机电流" address="6" unitId="3" unit="${UNIT_AMP}">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_AMP}"/>
+        </Point>
+
+        <Point id="dry01.inTemp" name="进风温度" address="7" dataType="int16" unitId="3"
+               unit="${UNIT_C}">
+          <Format decimals="0" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="dry01.outTemp" name="出风温度" address="8" dataType="int16" unitId="3"
+               unit="${UNIT_C}">
+          <Format decimals="0" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="dry01.drySeconds" name="累计干燥时长" address="9" dataType="uint32" unitId="3"
+               scanGroup="slow" unit="${UNIT_S}">
+          <Format decimals="0" suffix=" ${UNIT_S}"/>
+        </Point>
+
+        <Point id="dry01.energyTotal" name="干燥累计能耗" address="11" dataType="float64" unitId="3"
+               scanGroup="slow" unit="${UNIT_KWH}">
+          <Format decimals="3" suffix=" ${UNIT_KWH}"/>
+        </Point>
+
+        <Point id="dry01.levelDual" name="料位双点" address="15" unitId="3" unit="${UNIT_PCT}"
+               range="0..100">
+          <Scale rawLow="0" rawHigh="10000" scaledLow="0" scaledHigh="100">
+            <Clamp mode="both"/>
+          </Scale>
+          <Format decimals="2" suffix=" ${UNIT_PCT}"/>
+        </Point>
+
+        <Point id="dry01.levelTrend" name="料位趋势" address="16" dataType="float32" unitId="3"
+               unit="${UNIT_PCT_MIN}">
+          <Format decimals="3" suffix=" ${UNIT_PCT_MIN}"/>
+        </Point>
+
+        <Point id="dry01.dewDeviation" name="露点偏差" address="52" dataType="int32" unitId="3"
+               scanGroup="slow" unit="${UNIT_C}">
+          <Scale factor="0.01"/>
+          <Format decimals="2" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <Point id="dry01.drying" name="干燥中" area="discrete" address="1" dataType="bool" unitId="3"/>
+        <Point id="dry01.levelLow" name="料位低" area="discrete" address="2" dataType="bool" unitId="3"/>
+
+        <Point id="dry01.setTemp" name="干燥温度设定" area="holding" address="0" dataType="int16"
+               unitId="3" access="readwrite" scanGroup="normal" unit="${UNIT_C}" range="0..300">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+          <Write min="40" max="200" step="0.5" verify="true" permission="Operator"/>
+        </Point>
+
+        <Point id="dry01.materialBatch" name="原料批次号" area="holding" address="8" dataType="string"
+               length="10" unitId="3" access="readwrite" scanGroup="slow">
+          <Comment>可写字符串点：验证 ASCII 定长编码与回读</Comment>
+          <String encoding="ascii" trimNull="true"/>
+        </Point>
+
+        <Point id="dry01.batchBcd" name="批号BCD" area="holding" address="24" dataType="bcd"
+               length="1" unitId="3" access="readwrite" scanGroup="slow">
+          <Comment>BCD 写是本框架当前的空白区（Encode 无 BCD 分支），宿主只能读不能可靠写</Comment>
+          <Bcd digits="4"/>
+        </Point>
+
+        <!-- ── 从站 4：机械手 ROB-01 ── -->
+        <Point id="rob01.cycleTime" name="机械手循环时间" address="2" unitId="4" unit="${UNIT_S}">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_S}"/>
+        </Point>
+
+        <Point id="rob01.totalPicks" name="累计取件数" address="3" dataType="uint32" unitId="4"/>
+        <Point id="rob01.successPicks" name="取出成功数" address="5" dataType="uint32" unitId="4"/>
+        <Point id="rob01.failPicks" name="取出失败数" address="7" dataType="uint32" unitId="4"/>
+
+        <Point id="rob01.posX" name="X轴位置" address="9" unitId="4" unit="${UNIT_MM}">
+          <Format decimals="0" suffix=" ${UNIT_MM}"/>
+        </Point>
+        <Point id="rob01.posY" name="Y轴位置" address="10" unitId="4" unit="${UNIT_MM}">
+          <Format decimals="0" suffix=" ${UNIT_MM}"/>
+        </Point>
+        <Point id="rob01.posZ" name="Z轴位置" address="11" unitId="4" unit="${UNIT_MM}">
+          <Format decimals="0" suffix=" ${UNIT_MM}"/>
+        </Point>
+
+        <Point id="rob01.gripState" name="抓取状态" address="12" unitId="4">
+          <Format mapOn="engineering">
+            <Map>
+              <Item key="0">松开</Item>
+              <Item key="1">抓取中</Item>
+              <Item key="2">已夹持</Item>
+            </Map>
+          </Format>
+        </Point>
+
+        <Point id="rob01.beat" name="节拍" address="15" unitId="4" unit="${UNIT_CPH}">
+          <Format decimals="0" suffix=" ${UNIT_CPH}"/>
+        </Point>
+
+        <Point id="rob01.runSeconds" name="机械手累计运行时长" address="16" dataType="uint32" unitId="4"
+               scanGroup="slow" unit="${UNIT_S}">
+          <Format decimals="0" suffix=" ${UNIT_S}"/>
+        </Point>
+
+        <Point id="rob01.posDual" name="位置双点" address="18" unitId="4" unit="${UNIT_MM}"
+               range="0..500">
+          <Scale rawLow="0" rawHigh="10000" scaledLow="0" scaledHigh="500">
+            <Clamp mode="both"/>
+          </Scale>
+          <Format decimals="1" suffix=" ${UNIT_MM}"/>
+        </Point>
+
+        <Point id="rob01.trajectory" name="轨迹点" address="20" dataType="float32" unitId="4"
+               unit="${UNIT_MM}">
+          <Format decimals="2" suffix=" ${UNIT_MM}"/>
+        </Point>
+
+        <Point id="rob01.energyTotal" name="机械手累计能耗" address="22" dataType="float64" unitId="4"
+               scanGroup="slow" unit="${UNIT_KWH}">
+          <Format decimals="4" suffix=" ${UNIT_KWH}"/>
+        </Point>
+
+        <Point id="rob01.posDeviation" name="位置偏差" address="60" dataType="int32" unitId="4"
+               scanGroup="slow" unit="${UNIT_MM}">
+          <Format decimals="0" suffix=" ${UNIT_MM}"/>
+        </Point>
+
+        <Point id="rob01.inPlace" name="在原位" area="discrete" address="4" dataType="bool" unitId="4"/>
+
+        <Point id="rob01.pickDelay" name="取件延时" area="holding" address="1" unitId="4"
+               access="readwrite" scanGroup="slow" unit="${UNIT_S}">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_S}"/>
+          <Write min="0" max="20" step="0.1"/>
+        </Point>
+
+        <Point id="rob01.programName" name="程序名" area="holding" address="10" dataType="string"
+               length="10" unitId="4" access="readwrite" scanGroup="slow">
+          <String encoding="ascii" trimNull="true"/>
+        </Point>
+      </Points>
+    </PointSet>
+
+    <!-- ══════════════════════ 总电表 EM-01（unit 5） ══════════════════════ -->
+    <PointSet id="EM01_Points">
+      <Comment>三相电参量 + 电能累计/冻结 + 需量 + 功率因数；两个块读窗口覆盖 3x0..3x39</Comment>
+      <Defaults area="input" dataType="uint16" scanGroup="normal" swap="none"/>
+
+      <Blocks>
+        <Block id="em.meter" area="input" start="0" count="24" scanGroup="normal" swap="none">
+          <Point id="em01.totalEnergy" name="累计电能" address="0" dataType="uint32" unit="${UNIT_KWH}">
+            <Scale factor="0.01"/>
+            <Format decimals="2" suffix=" ${UNIT_KWH}"/>
+          </Point>
+
+          <Point id="em01.forwardEnergy" name="正向有功电能" address="2" dataType="uint32"
+                 unit="${UNIT_KWH}">
+            <Scale factor="0.01"/>
+            <Format decimals="2" suffix=" ${UNIT_KWH}"/>
+          </Point>
+
+          <Point id="em01.voltageA" name="A相电压" address="4" unit="${UNIT_V}">
+            <Format decimals="0" suffix=" ${UNIT_V}"/>
+          </Point>
+          <Point id="em01.voltageB" name="B相电压" address="5" unit="${UNIT_V}">
+            <Format decimals="0" suffix=" ${UNIT_V}"/>
+          </Point>
+          <Point id="em01.voltageC" name="C相电压" address="6" unit="${UNIT_V}">
+            <Format decimals="0" suffix=" ${UNIT_V}"/>
+          </Point>
+
+          <Point id="em01.currentA" name="A相电流" address="7" unit="${UNIT_AMP}">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_AMP}"/>
+          </Point>
+
+          <Point id="em01.activePower" name="总有功功率" address="10" unit="${UNIT_KW}">
+            <Format decimals="0" suffix=" ${UNIT_KW}"/>
+          </Point>
+
+          <Point id="em01.reactivePower" name="总无功功率" address="11" unit="kvar">
+            <Format decimals="0" suffix=" kvar"/>
+          </Point>
+
+          <Point id="em01.powerFactor" name="功率因数" address="12">
+            <Scale factor="0.001"/>
+            <Format decimals="3"/>
+          </Point>
+
+          <Point id="em01.frequency" name="频率" address="13" unit="${UNIT_HZ}">
+            <Scale factor="0.01"/>
+            <Format decimals="2" suffix=" ${UNIT_HZ}"/>
+          </Point>
+
+          <Point id="em01.alarmCode" name="电表报警码" address="14"/>
+
+          <Point id="em01.demand" name="实时需量" address="15" dataType="uint32" unit="${UNIT_KW}">
+            <Format decimals="0" suffix=" ${UNIT_KW}"/>
+          </Point>
+
+          <Point id="em01.energyF64" name="电能(高精度)" address="17" dataType="float64"
+                 unit="${UNIT_KWH}">
+            <Format decimals="4" suffix=" ${UNIT_KWH}"/>
+          </Point>
+
+          <Point id="em01.unbalance" name="电压不平衡度" address="21" dataType="float32"
+                 unit="${UNIT_PCT}">
+            <Format decimals="2" suffix=" ${UNIT_PCT}"/>
+          </Point>
+
+          <Point id="em01.energyDual" name="电能双点" address="23" unit="${UNIT_KWH}" range="0..100000">
+            <Scale rawLow="0" rawHigh="10000" scaledLow="0" scaledHigh="100000">
+              <Clamp mode="both"/>
+            </Scale>
+            <Format decimals="1" suffix=" ${UNIT_KWH}"/>
+          </Point>
+        </Block>
+
+        <Block id="em.nameplate" area="input" start="24" count="16" scanGroup="slow" swap="none">
+          <Point id="em01.meterModel" name="电表型号" address="24" dataType="string" length="10">
+            <String encoding="ascii" trimNull="true"/>
+          </Point>
+
+          <Point id="em01.readTime" name="抄表时刻" address="34" dataType="datetime" length="6">
+            <DateTime format="plc6"/>
+            <Format pattern="yyyy-MM-dd HH:mm:ss"/>
+          </Point>
+        </Block>
+      </Blocks>
+
+      <Points>
+        <Point id="em01.overDemand" name="需量超限" area="discrete" address="1" dataType="bool"
+               scanGroup="normal"/>
+
+        <Point id="em01.demandThreshold" name="需量阈值" area="holding" address="2" dataType="uint16"
+               access="readwrite" scanGroup="slow" unit="${UNIT_KW}">
+          <Format decimals="0" suffix=" ${UNIT_KW}"/>
+          <Write min="0" max="2000" step="1" verify="true"/>
+        </Point>
+
+        <Point id="em01.ctRatio" name="电流互感比" area="holding" address="1" dataType="uint16"
+               access="readwrite" scanGroup="slow">
+          <Scale factor="0.1"/>
+          <Format decimals="1"/>
+          <Write min="0" max="1000" step="0.1"/>
+        </Point>
+
+        <Point id="em01.meterNo" name="电表编号" area="holding" address="10" dataType="string"
+               length="10" access="readwrite" scanGroup="slow">
+          <String encoding="ascii" trimNull="true"/>
+        </Point>
+      </Points>
+    </PointSet>
+
+    <!-- ══════════════════════ 车间环境 ENV-01（unit 6） ══════════════════════ -->
+    <PointSet id="ENV01_Points">
+      <Comment>车间环境：温度是本次演练的报警源（high 报警，带延时/死区/锁存/需确认）</Comment>
+      <Defaults area="input" dataType="uint16" scanGroup="normal" swap="none"/>
+
+      <Blocks>
+        <Block id="env.air" area="input" start="0" count="11" scanGroup="normal" swap="none">
+          <Point id="env01.roomTemp" name="车间温度" address="0" dataType="int16" unit="${UNIT_C}"
+                 range="-10..50">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+            <Alarm id="env.highTemp" type="high" limit="27" delayMs="2000" deadband="0.3"
+                   priority="High" latch="true" ackRequired="true" message="${AL_ENV_HIGH_TEMP}"/>
+          </Point>
+
+          <Point id="env01.humidity" name="湿度" address="1" unit="${UNIT_RH}" range="0..100">
+            <Format decimals="0" suffix=" ${UNIT_RH}"/>
+          </Point>
+
+          <Point id="env01.dewPoint" name="环境露点" address="2" dataType="int16" unit="${UNIT_C}">
+            <Scale factor="0.1"/>
+            <Format decimals="1" suffix=" ${UNIT_C}"/>
+          </Point>
+
+          <Point id="env01.noise" name="噪音" address="3" unit="${UNIT_DB}">
+            <Format decimals="0" suffix=" ${UNIT_DB}"/>
+          </Point>
+
+          <Point id="env01.co2" name="CO2" address="4" unit="${UNIT_PPM}">
+            <Format decimals="0" suffix=" ${UNIT_PPM}"/>
+          </Point>
+
+          <Point id="env01.pm25" name="PM2.5" address="5" unit="${UNIT_UGM3}">
+            <Format decimals="0" suffix=" ${UNIT_UGM3}"/>
+          </Point>
+
+          <Point id="env01.pressureDiff" name="压差" address="6" dataType="int16" unit="${UNIT_PA}">
+            <Format decimals="0" suffix=" ${UNIT_PA}"/>
+          </Point>
+
+          <Point id="env01.illuminance" name="照度" address="7" unit="${UNIT_LX}">
+            <Format decimals="0" suffix=" ${UNIT_LX}"/>
+          </Point>
+
+          <Point id="env01.roomTempDual" name="温度双点" address="8" unit="${UNIT_C}" range="-10..50">
+            <Scale rawLow="0" rawHigh="10000" scaledLow="-10" scaledHigh="50">
+              <Clamp mode="both"/>
+            </Scale>
+            <Format decimals="2" suffix=" ${UNIT_C}"/>
+          </Point>
+
+          <Point id="env01.tempFluctuation" name="温湿度波动" address="9" dataType="float32">
+            <Format decimals="3"/>
+          </Point>
+        </Block>
+
+        <Block id="env.ops" area="input" start="11" count="19" scanGroup="slow" swap="none">
+          <Point id="env01.runSeconds" name="累计运行时长" address="11" dataType="uint32"
+                 unit="${UNIT_S}">
+            <Format decimals="0" suffix=" ${UNIT_S}"/>
+          </Point>
+
+          <Point id="env01.sampleTime" name="采集时刻" address="13" dataType="datetime" length="6">
+            <DateTime format="plc6"/>
+            <Format pattern="yyyy-MM-dd HH:mm:ss"/>
+          </Point>
+
+          <Point id="env01.areaName" name="区域名称" address="19" dataType="string" length="10">
+            <Comment>桩里是 UTF-8 中文串，按 ascii 解会乱码：这里显式声明 encoding</Comment>
+            <String encoding="utf-8" trimNull="true"/>
+          </Point>
+
+          <Point id="env01.alarmCode" name="环境报警码" address="29">
+            <Format mapOn="engineering">
+              <Map>
+                <Item key="0">无</Item>
+                <Item key="1">高温</Item>
+                <Item key="2">高湿</Item>
+                <Item key="4">CO2 超限</Item>
+              </Map>
+            </Format>
+          </Point>
+        </Block>
+      </Blocks>
+
+      <Points>
+        <Point id="env01.highTempAlarm" name="高温报警位" area="discrete" address="0" dataType="bool"
+               scanGroup="normal"/>
+        <Point id="env01.acRunning" name="空调运行" area="discrete" address="2" dataType="bool"
+               scanGroup="slow"/>
+
+        <Point id="env01.tempDeviation" name="温度偏差" area="input" address="62" dataType="int32"
+               scanGroup="slow" unit="${UNIT_C}">
+          <Scale factor="0.01"/>
+          <Format decimals="2" suffix=" ${UNIT_C}"/>
+        </Point>
+
+        <!-- 演练用的可写设定值：空调设定温度。写 28.0 让车间升温，触发高温报警 -->
+        <Point id="env01.acSetTemp" name="空调设定温度" area="holding" address="0" dataType="int16"
+               access="readwrite" scanGroup="normal" unit="${UNIT_C}" range="0..40">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+          <Write min="16" max="30" step="0.5" verify="true" permission="Operator"/>
+        </Point>
+
+        <Point id="env01.tempAlarmLimit" name="温度报警上限" area="holding" address="2" dataType="int16"
+               access="readwrite" scanGroup="slow" unit="${UNIT_C}">
+          <Scale factor="0.1"/>
+          <Format decimals="1" suffix=" ${UNIT_C}"/>
+          <Write min="10" max="40" step="0.5"/>
+        </Point>
+
+        <Point id="env01.co2Threshold" name="CO2阈值" area="holding" address="4" dataType="uint16"
+               access="readwrite" scanGroup="slow" unit="${UNIT_PPM}">
+          <Format decimals="0" suffix=" ${UNIT_PPM}"/>
+          <Write min="400" max="3000" step="10"/>
+        </Point>
+
+        <Point id="env01.areaNameW" name="区域名称(可写)" area="holding" address="8" dataType="string"
+               length="10" access="readwrite" scanGroup="slow">
+          <String encoding="utf-8" trimNull="true"/>
+        </Point>
+      </Points>
+
+      <Calculated>
+        <!-- 跨设备计算点：表达式里用「设备id/点位id」限定名 -->
+        <Point id="env01.plantLoad" name="车间负载率" dataType="float64" unit="${UNIT_PCT}">
+          <Expression>P('EM-01/em01.activePower') / 2.5</Expression>
+          <Format decimals="1" suffix=" ${UNIT_PCT}"/>
+        </Point>
+      </Calculated>
+    </PointSet>
+
+
+    <!-- ══════════════ 写保护从站 PROT-02（unit 12）——Failed 分支验收 ══════════════ -->
+    <PointSet id="Prot02_Points">
+      <Comment>写保护从站：4x0 单字可写（FC06 允许）；4x2 是双字值，框架用 FC16 多字写，设备回异常码 0x02</Comment>
+      <Defaults area="holding" dataType="uint16" scanGroup="slow" swap="none"/>
+
+      <Points>
+        <Point id="prot02.stateWord" name="状态字" area="input" address="0" dataType="uint16"/>
+        <Point id="prot02.singleWord" name="单字可写" address="0" access="readwrite">
+          <Write min="0" max="60000" step="1"/>
+        </Point>
+        <Point id="prot02.twoWordValue" name="两字值(多字写被拒)" address="2" dataType="uint32"
+               access="readwrite"/>
+      </Points>
+    </PointSet>
+
+  </PointSets>
+</HostConfig>

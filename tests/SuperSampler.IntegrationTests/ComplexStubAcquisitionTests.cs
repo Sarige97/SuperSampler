@@ -580,10 +580,12 @@ public sealed class ComplexStubAcquisitionTests
 
             // datetime(plc6)：6 个字 → 年月日时分秒齐全（桩每秒刷新为当前时间）
             var dt = F.GetAs<DateTime>(await ComplexStubFixture.WaitGoodAsync(m, "wo", "dt.poll"));
-            Assert.Equal(DateTime.Now.Year, dt.Year);
-            Assert.Equal(DateTime.Now.Month, dt.Month);
-            Assert.Equal(DateTime.Now.Day, dt.Day);
+            // 断言「6 个字解成了自洽的日期时间」，而不是「等于今天」：
+            // 桩提供的可能是"脚本启动时刻"（长稳跨午夜时就不是今天了），绑死当天日期会让用例假失败。
+            var now = DateTime.Now;
+            Assert.InRange(dt, now.AddDays(-2), now.AddDays(2));
             Assert.InRange(dt.Hour, 0, 23);
+            Assert.InRange(dt.Minute, 0, 59);
         }
         finally
         {

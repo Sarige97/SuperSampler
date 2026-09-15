@@ -1,0 +1,1213 @@
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║ InjectionLineMonitor —— 注塑产线监视线（SuperSampler 宿主样例，net46 控制台）        ║
+╚══════════════════════════════════════════════════════════════════════════════════════╝
+  操作者身份 : op01:Operator（写值与报警确认都带它）
+  运行时长   : 70s   显示周期 2s   CSV 目录 D:\IT\SuperModbus\SuperSampler\samples\InjectionLineMonitor\run6\events.csv
+── 配置解析摘要 ─────────────────────────────────────────────────────────────
+  配置文件   : D:\IT\SuperModbus\SuperSampler\samples\InjectionLineMonitor\line.xml
+  工程       : 注塑产线数据采集（InjectionLineMonitor）  修订 1  作者 Sarige
+  schema     : 3.x  unsupportedPolicy=warn
+  语言/坏值  : zh_CN/en_US  nullText="--"  全局 swap=Word
+  规模       : 链路 3  设备 5  点表 5  点位 145/145（可写 35 / 计算点 2 / 报警 2）
+  通信策略   : 超时 1000ms  重试 1x100ms  断线质量=bad/null  staleAfter=5000ms  原始读写=关
+
+  扫描组     : fast[poll 500ms]  normal[poll 1000ms+50ms抖动]  slow[poll 5000ms+200ms抖动]
+  链路       : lineA[tcp 127.0.0.1:2502 to=1000ms retry=1]  lineB[tcp 127.0.0.1:2503 to=1000ms]  util[tcp 127.0.0.1:2504 to=1000ms]
+
+  设备清单：
+    IM-01        1号注塑机      transport=lineA   unitId=1   点位=47   可写=17  扫描组=fast/normal/slow   块=im.monitor(InputRegister@0+20),im.process(InputRegister@30+30),im.params(HoldingRegister@0+23)
+    GW-LINE-B    产线B网关      transport=lineB   unitId=2   点位=52   可写=9   扫描组=normal/slow        块=无（全散点）
+                  └ 点位级 unitId 覆盖：unit2×18, unit3×17, unit4×17
+    EM-01        总电表        transport=util    unitId=5   点位=21   可写=3   扫描组=normal/slow        块=em.meter(InputRegister@0+24),em.nameplate(InputRegister@24+16)
+    ENV-01       车间环境       transport=util    unitId=6   点位=22   可写=4   扫描组=normal/slow        块=env.air(InputRegister@0+11),env.ops(InputRegister@11+19)
+    PROT-02      写保护从站      transport=util    unitId=12  点位=3    可写=2   扫描组=slow               块=无（全散点）
+
+  Warnings   : 1 条
+      ! 配置包含尚未实现的功能：AlarmClass@name/@color/@sound/@escalateAfterMs（等级展示属性由宿主消费，框架未使用）（unsupportedPolicy=warn：已忽略）
+────────────────────────────────────────────────────────────────────────────
+  已订阅     : 值变化 / 报警三态 / 写审计 / 错误族（IErrorEvent 基接口）  共 6 条订阅
+  启动引擎   : 0.01s
+  操作脚本   : 内置默认序列（3 条动作）
+
+[00:44:01] [资源] T+0.0s  线程 18  句柄 340  GC 后托管堆 1.73 MB
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #1   T+2.1s   本地时间 00:44:03   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.0s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.0s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.0s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.0s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.0s     次品数
+   IM-01/im01.barrel1Temp         219.8 ℃                 Good                0.0s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.0s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.0s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.0s     射胶压力
+   IM-01/im01.energyTotal         0.026 kWh               Good                0.0s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.0s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.0s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       25 L/min                Good                0.0s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.0s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -33.9 ℃                 Good                0.0s     露点
+   GW-LINE-B/dry01.materialLevel  82 %                    Good                0.0s     料位
+   GW-LINE-B/rob01.cycleTime      3.1 s                   Good                0.0s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     0                       Good                0.0s     累计取件
+   EM-01/em01.activePower         132 kW                  Good                0.0s     总有功功率
+   EM-01/em01.powerFactor         0.876                   Good                0.0s     功率因数
+   EM-01/em01.totalEnergy         23.50 kWh               Good                0.0s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.0s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.0s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.0s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.0s     高温报警位
+   ENV-01/env01.plantLoad         52.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 223  错误 0  写 0  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #2   T+4.1s   本地时间 00:44:05   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.0s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.0s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.0s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.0s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.0s     次品数
+   IM-01/im01.barrel1Temp         219.7 ℃                 Good                0.1s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.1s     模具温度
+   IM-01/im01.oilTemp             44.7 ℃                  Good                0.1s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.1s     射胶压力
+   IM-01/im01.energyTotal         0.033 kWh               Good                0.1s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.0s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.1s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       15 L/min                Good                0.1s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.0s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.1 ℃                 Good                0.0s     露点
+   GW-LINE-B/dry01.materialLevel  82 %                    Good                0.0s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.0s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     0                       Good                0.0s     累计取件
+   EM-01/em01.activePower         120 kW                  Good                0.1s     总有功功率
+   EM-01/em01.powerFactor         0.873                   Good                0.1s     功率因数
+   EM-01/em01.totalEnergy         30.00 kWh               Good                0.1s     累计电能
+   ENV-01/env01.roomTemp          26.1 ℃                  Good                0.1s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.1s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.1s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.0s     高温报警位
+   ENV-01/env01.plantLoad         48.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 305  错误 0  写 0  （明细见 CSV）
+[T+5.0s] [ops] write IM-01/im01.cavitySetTemp = 205 → Succeeded  verifyMismatch=False  readback=205 ℃[Good]  16ms  user=op01:Operator
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #3   T+6.1s   本地时间 00:44:07   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         207.7 ℃                 Good                0.1s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.1s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.1s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.1s     射胶压力
+   IM-01/im01.energyTotal         0.040 kWh               Good                0.1s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.5 ℃                  Good                0.0s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       24 L/min                Good                0.0s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.0s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -33.9 ℃                 Good                0.0s     露点
+   GW-LINE-B/dry01.materialLevel  81 %                    Good                0.0s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.0s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     0                       Good                0.0s     累计取件
+   EM-01/em01.activePower         109 kW                  Good                0.1s     总有功功率
+   EM-01/em01.powerFactor         0.902                   Good                0.1s     功率因数
+   EM-01/em01.totalEnergy         36.73 kWh               Good                0.1s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.0s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.0s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.0s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.0s     高温报警位
+   ENV-01/env01.plantLoad         43.6 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 404  错误 0  写 1  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #4   T+8.1s   本地时间 00:44:09   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.8 ℃                 Good                0.1s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.1s     模具温度
+   IM-01/im01.oilTemp             44.3 ℃                  Good                0.1s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.1s     射胶压力
+   IM-01/im01.energyTotal         0.047 kWh               Good                0.1s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.4 ℃                  Good                0.1s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       27 L/min                Good                0.1s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.0s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.7 ℃                 Good                0.0s     露点
+   GW-LINE-B/dry01.materialLevel  80 %                    Good                0.0s     料位
+   GW-LINE-B/rob01.cycleTime      3.2 s                   Good                0.0s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     0                       Good                0.0s     累计取件
+   EM-01/em01.activePower         104 kW                  Good                0.1s     总有功功率
+   EM-01/em01.powerFactor         0.916                   Good                0.1s     功率因数
+   EM-01/em01.totalEnergy         42.86 kWh               Good                0.1s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.1s     车间温度
+   ENV-01/env01.humidity          57 %RH                  Good                0.1s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.1s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.1s     高温报警位
+   ENV-01/env01.plantLoad         41.6 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 494  错误 0  写 1  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #5   T+10.1s   本地时间 00:44:11   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.7 ℃                 Good                0.1s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.1s     模具温度
+   IM-01/im01.oilTemp             44.5 ℃                  Good                0.1s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.1s     射胶压力
+   IM-01/im01.energyTotal         0.056 kWh               Good                0.1s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.4 ℃                  Good                0.1s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       37 L/min                Good                0.1s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.1s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.1s     露点
+   GW-LINE-B/dry01.materialLevel  80 %                    Good                0.1s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.1s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     0                       Good                0.1s     累计取件
+   EM-01/em01.activePower         117 kW                  Good                0.1s     总有功功率
+   EM-01/em01.powerFactor         0.860                   Good                0.1s     功率因数
+   EM-01/em01.totalEnergy         49.03 kWh               Good                0.1s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.1s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.1s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.1s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.1s     高温报警位
+   ENV-01/env01.plantLoad         46.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 600  错误 0  写 1  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #6   T+12.1s   本地时间 00:44:13   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.1s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.1s     模具温度
+   IM-01/im01.oilTemp             44.8 ℃                  Good                0.1s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.1s     射胶压力
+   IM-01/im01.energyTotal         0.069 kWh               Good                0.1s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.1s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       28 L/min                Good                0.1s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.1s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -35.3 ℃                 Good                0.1s     露点
+   GW-LINE-B/dry01.materialLevel  79 %                    Good                0.1s     料位
+   GW-LINE-B/rob01.cycleTime      3.2 s                   Good                0.1s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.1s     累计取件
+   EM-01/em01.activePower         112 kW                  Good                0.1s     总有功功率
+   EM-01/em01.powerFactor         0.926                   Good                0.1s     功率因数
+   EM-01/em01.totalEnergy         55.10 kWh               Good                0.1s     累计电能
+   ENV-01/env01.roomTemp          26.1 ℃                  Good                0.1s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.1s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.1s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.1s     高温报警位
+   ENV-01/env01.plantLoad         44.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 683  错误 0  写 1  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #7   T+14.2s   本地时间 00:44:15   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.1s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.1s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.1s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.1s     射胶压力
+   IM-01/im01.energyTotal         0.081 kWh               Good                0.1s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.1s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       32 L/min                Good                0.1s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.1s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.1s     露点
+   GW-LINE-B/dry01.materialLevel  79 %                    Good                0.1s     料位
+   GW-LINE-B/rob01.cycleTime      2.8 s                   Good                0.1s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.1s     累计取件
+   EM-01/em01.activePower         105 kW                  Good                0.1s     总有功功率
+   EM-01/em01.powerFactor         0.919                   Good                0.1s     功率因数
+   EM-01/em01.totalEnergy         61.42 kWh               Good                0.1s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.1s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.1s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.1s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.1s     高温报警位
+   ENV-01/env01.plantLoad         42.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 757  错误 0  写 1  （明细见 CSV）
+[T+15.8s] [ops] pulse IM-01/im01.moldCloseJog = True → Succeeded  verifyMismatch=False  readback=-  805ms  user=op01:Operator
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #8   T+16.2s   本地时间 00:44:17   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.8 ℃                 Good                0.2s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.2s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.2s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.2s     射胶压力
+   IM-01/im01.energyTotal         0.094 kWh               Good                0.2s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.2 ℃                  Good                0.1s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       15 L/min                Good                0.1s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.1s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.9 ℃                 Good                0.1s     露点
+   GW-LINE-B/dry01.materialLevel  78 %                    Good                0.1s     料位
+   GW-LINE-B/rob01.cycleTime      2.8 s                   Good                0.1s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.1s     累计取件
+   EM-01/em01.activePower         123 kW                  Good                0.1s     总有功功率
+   EM-01/em01.powerFactor         0.920                   Good                0.1s     功率因数
+   EM-01/em01.totalEnergy         67.51 kWh               Good                0.1s     累计电能
+   ENV-01/env01.roomTemp          26.2 ℃                  Good                0.1s     车间温度
+   ENV-01/env01.humidity          56 %RH                  Good                0.1s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.1s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.1s     高温报警位
+   ENV-01/env01.plantLoad         49.2 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 848  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #9   T+18.2s   本地时间 00:44:19   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.2s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.2s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.2s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.2s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.2s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.2s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.2s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.2s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.2s     射胶压力
+   IM-01/im01.energyTotal         0.106 kWh               Good                0.2s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.2s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.1 ℃                  Good                0.1s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       37 L/min                Good                0.1s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.1s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.3 ℃                 Good                0.1s     露点
+   GW-LINE-B/dry01.materialLevel  77 %                    Good                0.1s     料位
+   GW-LINE-B/rob01.cycleTime      2.8 s                   Good                0.1s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.1s     累计取件
+   EM-01/em01.activePower         126 kW                  Good                0.2s     总有功功率
+   EM-01/em01.powerFactor         0.928                   Good                0.2s     功率因数
+   EM-01/em01.totalEnergy         73.67 kWh               Good                0.2s     累计电能
+   ENV-01/env01.roomTemp          26.1 ℃                  Good                0.2s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.2s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.2s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.2s     高温报警位
+   ENV-01/env01.plantLoad         50.4 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 927  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #10   T+20.2s   本地时间 00:44:22   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.2s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.2s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.2s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.2s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.2s     次品数
+   IM-01/im01.barrel1Temp         204.7 ℃                 Good                0.2s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.2s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.2s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.2s     射胶压力
+   IM-01/im01.energyTotal         0.119 kWh               Good                0.2s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.2s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.5 ℃                  Good                0.2s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       25 L/min                Good                0.2s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.1s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.2 ℃                 Good                0.1s     露点
+   GW-LINE-B/dry01.materialLevel  77 %                    Good                0.1s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.1s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.1s     累计取件
+   EM-01/em01.activePower         122 kW                  Good                0.2s     总有功功率
+   EM-01/em01.powerFactor         0.910                   Good                0.2s     功率因数
+   EM-01/em01.totalEnergy         80.15 kWh               Good                0.2s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.2s     车间温度
+   ENV-01/env01.humidity          53 %RH                  Good                0.2s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.2s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.2s     高温报警位
+   ENV-01/env01.plantLoad         48.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1020  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #11   T+22.3s   本地时间 00:44:24   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.2s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.2s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.2s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.2s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.2s     次品数
+   IM-01/im01.barrel1Temp         204.9 ℃                 Good                0.2s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.2s     模具温度
+   IM-01/im01.oilTemp             44.7 ℃                  Good                0.2s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.2s     射胶压力
+   IM-01/im01.energyTotal         0.131 kWh               Good                0.2s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.2s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.2s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       32 L/min                Good                0.2s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.2s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -33.8 ℃                 Good                0.2s     露点
+   GW-LINE-B/dry01.materialLevel  76 %                    Good                0.2s     料位
+   GW-LINE-B/rob01.cycleTime      3.2 s                   Good                0.2s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.2s     累计取件
+   EM-01/em01.activePower         132 kW                  Good                0.2s     总有功功率
+   EM-01/em01.powerFactor         0.923                   Good                0.2s     功率因数
+   EM-01/em01.totalEnergy         86.12 kWh               Good                0.2s     累计电能
+   ENV-01/env01.roomTemp          25.8 ℃                  Good                0.2s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.2s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.2s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.2s     高温报警位
+   ENV-01/env01.plantLoad         52.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1099  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #12   T+24.3s   本地时间 00:44:26   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.2s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.2s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.2s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.2s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.2s     次品数
+   IM-01/im01.barrel1Temp         204.9 ℃                 Good                0.2s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.2s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.2s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.2s     射胶压力
+   IM-01/im01.energyTotal         0.144 kWh               Good                0.2s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.2s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.5 ℃                  Good                0.2s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       28 L/min                Good                0.2s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.2s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -33.9 ℃                 Good                0.2s     露点
+   GW-LINE-B/dry01.materialLevel  76 %                    Good                0.2s     料位
+   GW-LINE-B/rob01.cycleTime      3.2 s                   Good                0.2s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.2s     累计取件
+   EM-01/em01.activePower         97 kW                   Good                0.2s     总有功功率
+   EM-01/em01.powerFactor         0.944                   Good                0.2s     功率因数
+   EM-01/em01.totalEnergy         92.34 kWh               Good                0.2s     累计电能
+   ENV-01/env01.roomTemp          25.8 ℃                  Good                0.2s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.2s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.2s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.2s     高温报警位
+   ENV-01/env01.plantLoad         38.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1175  错误 0  写 2  （明细见 CSV）
+[T+25.0s] [报警] ACKED   im.fault IM-01/im01.faultAlarm by op01
+[T+25.0s] [ops] ack IM-01/im01.faultAlarm alarmId=im.fault → Acknowledged （AckPending 已清，报警回到可重触发状态） user=op01
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #13   T+26.3s   本地时间 00:44:28   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               开模                      Good                0.2s     注塑阶段
+   IM-01/im01.statusWord          129                     Good                0.2s     状态字
+   IM-01/im01.cycleTime           30.0 s                  Good                0.2s     当前周期
+   IM-01/im01.goodParts           0                       Good                0.2s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.2s     次品数
+   IM-01/im01.barrel1Temp         204.9 ℃                 Good                0.3s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.3s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.3s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.3s     射胶压力
+   IM-01/im01.energyTotal         0.150 kWh               Good                0.3s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.2s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.6 ℃                  Good                0.2s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       30 L/min                Good                0.2s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.2s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -33.4 ℃                 Good                0.2s     露点
+   GW-LINE-B/dry01.materialLevel  75 %                    Good                0.2s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.2s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.2s     累计取件
+   EM-01/em01.activePower         112 kW                  Good                0.2s     总有功功率
+   EM-01/em01.powerFactor         0.947                   Good                0.2s     功率因数
+   EM-01/em01.totalEnergy         98.47 kWh               Good                0.2s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.2s     车间温度
+   ENV-01/env01.humidity          57 %RH                  Good                0.2s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.2s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.2s     高温报警位
+   ENV-01/env01.plantLoad         44.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1274  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #14   T+28.3s   本地时间 00:44:30   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               待机                      Good                0.3s     注塑阶段
+   IM-01/im01.statusWord          3                       Good                0.3s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.3s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.3s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.3s     次品数
+   IM-01/im01.barrel1Temp         204.7 ℃                 Good                0.3s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.3s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.3s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.3s     射胶压力
+   IM-01/im01.energyTotal         0.155 kWh               Good                0.3s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.3s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.6 ℃                  Good                0.2s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       35 L/min                Good                0.2s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.2s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.7 ℃                 Good                0.2s     露点
+   GW-LINE-B/dry01.materialLevel  74 %                    Good                0.2s     料位
+   GW-LINE-B/rob01.cycleTime      3.1 s                   Good                0.2s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.2s     累计取件
+   EM-01/em01.activePower         112 kW                  Good                0.3s     总有功功率
+   EM-01/em01.powerFactor         0.905                   Good                0.3s     功率因数
+   EM-01/em01.totalEnergy         104.59 kWh              Good                0.3s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.3s     车间温度
+   ENV-01/env01.humidity          57 %RH                  Good                0.3s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.3s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.2s     高温报警位
+   ENV-01/env01.plantLoad         44.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1362  错误 0  写 2  （明细见 CSV）
+[00:44:31] [资源] T+30.0s  线程 23  句柄 414  GC 后托管堆 1.84 MB
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #15   T+30.4s   本地时间 00:44:32   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               合模                      Good                0.3s     注塑阶段
+   IM-01/im01.statusWord          5                       Good                0.3s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.3s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.3s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.3s     次品数
+   IM-01/im01.barrel1Temp         205.0 ℃                 Good                0.3s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.3s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.3s     液压油温
+   IM-01/im01.injectPressure      163 bar                 Good                0.3s     射胶压力
+   IM-01/im01.energyTotal         0.163 kWh               Good                0.3s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.3s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.3s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       26 L/min                Good                0.3s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.3s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.3s     露点
+   GW-LINE-B/dry01.materialLevel  74 %                    Good                0.3s     料位
+   GW-LINE-B/rob01.cycleTime      3.1 s                   Good                0.3s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.3s     累计取件
+   EM-01/em01.activePower         108 kW                  Good                0.3s     总有功功率
+   EM-01/em01.powerFactor         0.915                   Good                0.3s     功率因数
+   EM-01/em01.totalEnergy         110.82 kWh              Good                0.3s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.3s     车间温度
+   ENV-01/env01.humidity          56 %RH                  Good                0.3s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.3s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.3s     高温报警位
+   ENV-01/env01.plantLoad         43.2 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1457  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #16   T+32.4s   本地时间 00:44:34   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               合模                      Good                0.3s     注塑阶段
+   IM-01/im01.statusWord          5                       Good                0.3s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.3s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.3s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.3s     次品数
+   IM-01/im01.barrel1Temp         204.9 ℃                 Good                0.3s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.3s     模具温度
+   IM-01/im01.oilTemp             44.5 ℃                  Good                0.3s     液压油温
+   IM-01/im01.injectPressure      155 bar                 Good                0.3s     射胶压力
+   IM-01/im01.energyTotal         0.188 kWh               Good                0.3s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.3s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.4 ℃                  Good                0.3s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       19 L/min                Good                0.3s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.3s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.3s     露点
+   GW-LINE-B/dry01.materialLevel  73 %                    Good                0.3s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.3s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.3s     累计取件
+   EM-01/em01.activePower         120 kW                  Good                0.3s     总有功功率
+   EM-01/em01.powerFactor         0.934                   Good                0.3s     功率因数
+   EM-01/em01.totalEnergy         116.86 kWh              Good                0.3s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.3s     车间温度
+   ENV-01/env01.humidity          56 %RH                  Good                0.3s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.3s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.3s     高温报警位
+   ENV-01/env01.plantLoad         48.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1537  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #17   T+34.4s   本地时间 00:44:36   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               射胶                      Good                0.3s     注塑阶段
+   IM-01/im01.statusWord          9                       Good                0.3s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.3s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.3s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.3s     次品数
+   IM-01/im01.barrel1Temp         204.9 ℃                 Good                0.3s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.3s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.3s     液压油温
+   IM-01/im01.injectPressure      62 bar                  Good                0.3s     射胶压力
+   IM-01/im01.energyTotal         0.208 kWh               Good                0.3s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.3s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.6 ℃                  Good                0.3s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       36 L/min                Good                0.3s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.3s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.3s     露点
+   GW-LINE-B/dry01.materialLevel  73 %                    Good                0.3s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.3s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.3s     累计取件
+   EM-01/em01.activePower         131 kW                  Good                0.3s     总有功功率
+   EM-01/em01.powerFactor         0.918                   Good                0.3s     功率因数
+   EM-01/em01.totalEnergy         122.97 kWh              Good                0.3s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.3s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.3s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.3s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.3s     高温报警位
+   ENV-01/env01.plantLoad         52.4 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1622  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #18   T+36.4s   本地时间 00:44:38   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.3s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.3s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.3s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.3s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.3s     次品数
+   IM-01/im01.barrel1Temp         204.8 ℃                 Good                0.4s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.4s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.4s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.4s     射胶压力
+   IM-01/im01.energyTotal         0.221 kWh               Good                0.4s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.3s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.5 ℃                  Good                0.3s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       37 L/min                Good                0.3s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.3s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.2 ℃                 Good                0.3s     露点
+   GW-LINE-B/dry01.materialLevel  72 %                    Good                0.3s     料位
+   GW-LINE-B/rob01.cycleTime      2.8 s                   Good                0.3s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.3s     累计取件
+   EM-01/em01.activePower         108 kW                  Good                0.3s     总有功功率
+   EM-01/em01.powerFactor         0.935                   Good                0.3s     功率因数
+   EM-01/em01.totalEnergy         129.07 kWh              Good                0.3s     累计电能
+   ENV-01/env01.roomTemp          26.1 ℃                  Good                0.3s     车间温度
+   ENV-01/env01.humidity          56 %RH                  Good                0.3s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.3s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.3s     高温报警位
+   ENV-01/env01.plantLoad         43.2 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1719  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #19   T+38.4s   本地时间 00:44:40   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.4s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.4s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.4s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.4s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.4s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.4s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.4s     模具温度
+   IM-01/im01.oilTemp             44.7 ℃                  Good                0.4s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.4s     射胶压力
+   IM-01/im01.energyTotal         0.228 kWh               Good                0.4s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.4s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.2 ℃                  Good                0.3s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       34 L/min                Good                0.3s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.3s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.2 ℃                 Good                0.3s     露点
+   GW-LINE-B/dry01.materialLevel  71 %                    Good                0.3s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.3s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.3s     累计取件
+   EM-01/em01.activePower         123 kW                  Good                0.4s     总有功功率
+   EM-01/em01.powerFactor         0.928                   Good                0.4s     功率因数
+   EM-01/em01.totalEnergy         135.34 kWh              Good                0.4s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.4s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.4s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.4s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.4s     高温报警位
+   ENV-01/env01.plantLoad         49.2 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1809  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #20   T+40.5s   本地时间 00:44:42   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.4s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.4s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.4s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.4s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.4s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.4s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.4s     模具温度
+   IM-01/im01.oilTemp             44.3 ℃                  Good                0.4s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.4s     射胶压力
+   IM-01/im01.energyTotal         0.235 kWh               Good                0.4s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.4s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.4s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       30 L/min                Good                0.4s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.4s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.5 ℃                 Good                0.4s     露点
+   GW-LINE-B/dry01.materialLevel  71 %                    Good                0.4s     料位
+   GW-LINE-B/rob01.cycleTime      3.0 s                   Good                0.3s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     1                       Good                0.3s     累计取件
+   EM-01/em01.activePower         114 kW                  Good                0.4s     总有功功率
+   EM-01/em01.powerFactor         0.937                   Good                0.4s     功率因数
+   EM-01/em01.totalEnergy         141.58 kWh              Good                0.4s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.4s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.4s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.4s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.4s     高温报警位
+   ENV-01/env01.plantLoad         45.6 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1903  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #21   T+42.5s   本地时间 00:44:44   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.4s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.4s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.4s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.4s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.4s     次品数
+   IM-01/im01.barrel1Temp         204.4 ℃                 Good                0.4s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.4s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.4s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.4s     射胶压力
+   IM-01/im01.energyTotal         0.243 kWh               Good                0.4s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.4s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.4 ℃                  Good                0.4s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       31 L/min                Good                0.4s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.4s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -35.2 ℃                 Good                0.4s     露点
+   GW-LINE-B/dry01.materialLevel  70 %                    Good                0.4s     料位
+   GW-LINE-B/rob01.cycleTime      3.0 s                   Good                0.4s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.4s     累计取件
+   EM-01/em01.activePower         104 kW                  Good                0.4s     总有功功率
+   EM-01/em01.powerFactor         0.948                   Good                0.4s     功率因数
+   EM-01/em01.totalEnergy         147.56 kWh              Good                0.4s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.4s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.4s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.4s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.4s     高温报警位
+   ENV-01/env01.plantLoad         41.6 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 1994  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #22   T+44.5s   本地时间 00:44:46   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.4s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.4s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.4s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.4s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.4s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.4s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.4s     模具温度
+   IM-01/im01.oilTemp             44.7 ℃                  Good                0.4s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.4s     射胶压力
+   IM-01/im01.energyTotal         0.250 kWh               Good                0.4s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.4s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.4s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       27 L/min                Good                0.4s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.4s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.4s     露点
+   GW-LINE-B/dry01.materialLevel  70 %                    Good                0.4s     料位
+   GW-LINE-B/rob01.cycleTime      2.8 s                   Good                0.4s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.4s     累计取件
+   EM-01/em01.activePower         100 kW                  Good                0.4s     总有功功率
+   EM-01/em01.powerFactor         0.926                   Good                0.4s     功率因数
+   EM-01/em01.totalEnergy         153.34 kWh              Good                0.4s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.4s     车间温度
+   ENV-01/env01.humidity          53 %RH                  Good                0.4s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.4s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.4s     高温报警位
+   ENV-01/env01.plantLoad         40.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2076  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #23   T+46.5s   本地时间 00:44:48   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.4s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.4s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.4s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.4s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.4s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.5s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.5s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.5s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.5s     射胶压力
+   IM-01/im01.energyTotal         0.257 kWh               Good                0.5s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.4s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.4 ℃                  Good                0.4s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       37 L/min                Good                0.4s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.4s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.7 ℃                 Good                0.4s     露点
+   GW-LINE-B/dry01.materialLevel  69 %                    Good                0.4s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.4s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.4s     累计取件
+   EM-01/em01.activePower         119 kW                  Good                0.4s     总有功功率
+   EM-01/em01.powerFactor         0.875                   Good                0.4s     功率因数
+   EM-01/em01.totalEnergy         159.42 kWh              Good                0.4s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.4s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.4s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.4s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.4s     高温报警位
+   ENV-01/env01.plantLoad         47.6 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2176  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #24   T+48.5s   本地时间 00:44:50   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.5s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.5s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.5s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.5s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.5s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.5s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.5s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.5s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.5s     射胶压力
+   IM-01/im01.energyTotal         0.263 kWh               Good                0.5s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.5s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.4 ℃                  Good                0.4s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       30 L/min                Good                0.4s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.4s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.4s     露点
+   GW-LINE-B/dry01.materialLevel  69 %                    Good                0.4s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.4s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.4s     累计取件
+   EM-01/em01.activePower         108 kW                  Good                0.5s     总有功功率
+   EM-01/em01.powerFactor         0.943                   Good                0.5s     功率因数
+   EM-01/em01.totalEnergy         165.44 kWh              Good                0.5s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.5s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.5s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.5s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.5s     高温报警位
+   ENV-01/env01.plantLoad         43.2 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2263  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #25   T+50.6s   本地时间 00:44:52   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               保压                      Good                0.5s     注塑阶段
+   IM-01/im01.statusWord          17                      Good                0.5s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.5s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.5s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.5s     次品数
+   IM-01/im01.barrel1Temp         204.6 ℃                 Good                0.5s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.5s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.5s     液压油温
+   IM-01/im01.injectPressure      78 bar                  Good                0.5s     射胶压力
+   IM-01/im01.energyTotal         0.270 kWh               Good                0.5s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.5s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.5 ℃                  Good                0.5s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       28 L/min                Good                0.5s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.5s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.5s     露点
+   GW-LINE-B/dry01.materialLevel  68 %                    Good                0.5s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.4s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.4s     累计取件
+   EM-01/em01.activePower         125 kW                  Good                0.5s     总有功功率
+   EM-01/em01.powerFactor         0.894                   Good                0.5s     功率因数
+   EM-01/em01.totalEnergy         171.72 kWh              Good                0.5s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.5s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.5s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.5s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.5s     高温报警位
+   ENV-01/env01.plantLoad         50.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2361  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #26   T+52.6s   本地时间 00:44:54   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.5s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.5s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.5s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.5s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.5s     次品数
+   IM-01/im01.barrel1Temp         204.5 ℃                 Good                0.5s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.5s     模具温度
+   IM-01/im01.oilTemp             44.5 ℃                  Good                0.5s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.5s     射胶压力
+   IM-01/im01.energyTotal         0.282 kWh               Good                0.5s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.5s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.5s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       34 L/min                Good                0.5s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.5s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.5 ℃                 Good                0.5s     露点
+   GW-LINE-B/dry01.materialLevel  67 %                    Good                0.5s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.5s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.5s     累计取件
+   EM-01/em01.activePower         95 kW                   Good                0.5s     总有功功率
+   EM-01/em01.powerFactor         0.871                   Good                0.5s     功率因数
+   EM-01/em01.totalEnergy         177.59 kWh              Good                0.5s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.5s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.5s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.5s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.5s     高温报警位
+   ENV-01/env01.plantLoad         38.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2448  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #27   T+54.6s   本地时间 00:44:56   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.0s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.0s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.0s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.0s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.0s     次品数
+   IM-01/im01.barrel1Temp         204.8 ℃                 Good                0.5s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.5s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.5s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.5s     射胶压力
+   IM-01/im01.energyTotal         0.295 kWh               Good                0.5s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.0s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.1 ℃                  Good                0.5s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       27 L/min                Good                0.5s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.5s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.1 ℃                 Good                0.5s     露点
+   GW-LINE-B/dry01.materialLevel  67 %                    Good                0.5s     料位
+   GW-LINE-B/rob01.cycleTime      2.8 s                   Good                0.5s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.5s     累计取件
+   EM-01/em01.activePower         111 kW                  Good                0.5s     总有功功率
+   EM-01/em01.powerFactor         0.947                   Good                0.5s     功率因数
+   EM-01/em01.totalEnergy         183.66 kWh              Good                0.5s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.5s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.5s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.5s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.5s     高温报警位
+   ENV-01/env01.plantLoad         44.4 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2531  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #28   T+56.6s   本地时间 00:44:58   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.0s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.0s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.0s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.0s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.0s     次品数
+   IM-01/im01.barrel1Temp         204.7 ℃                 Good                0.6s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.6s     模具温度
+   IM-01/im01.oilTemp             44.4 ℃                  Good                0.6s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.6s     射胶压力
+   IM-01/im01.energyTotal         0.307 kWh               Good                0.6s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.0s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.2 ℃                  Good                0.5s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       17 L/min                Good                0.5s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.5s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.3 ℃                 Good                0.5s     露点
+   GW-LINE-B/dry01.materialLevel  66 %                    Good                0.5s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.5s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.5s     累计取件
+   EM-01/em01.activePower         117 kW                  Good                0.5s     总有功功率
+   EM-01/em01.powerFactor         0.943                   Good                0.5s     功率因数
+   EM-01/em01.totalEnergy         189.98 kWh              Good                0.5s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.5s     车间温度
+   ENV-01/env01.humidity          53 %RH                  Good                0.5s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.5s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.5s     高温报警位
+   ENV-01/env01.plantLoad         46.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2621  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #29   T+58.7s   本地时间 00:45:00   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.7 ℃                 Good                0.6s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.6s     模具温度
+   IM-01/im01.oilTemp             44.6 ℃                  Good                0.6s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.6s     射胶压力
+   IM-01/im01.energyTotal         0.320 kWh               Good                0.6s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.5s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       26 L/min                Good                0.5s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.5s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.3 ℃                 Good                0.5s     露点
+   GW-LINE-B/dry01.materialLevel  66 %                    Good                0.5s     料位
+   GW-LINE-B/rob01.cycleTime      3.2 s                   Good                0.5s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.5s     累计取件
+   EM-01/em01.activePower         108 kW                  Good                0.6s     总有功功率
+   EM-01/em01.powerFactor         0.873                   Good                0.6s     功率因数
+   EM-01/em01.totalEnergy         196.10 kWh              Good                0.6s     累计电能
+   ENV-01/env01.roomTemp          26.0 ℃                  Good                0.6s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.6s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.6s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.6s     高温报警位
+   ENV-01/env01.plantLoad         43.2 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2701  错误 0  写 2  （明细见 CSV）
+[00:45:01] [资源] T+60.1s  线程 20  句柄 410  GC 后托管堆 1.84 MB
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #30   T+60.7s   本地时间 00:45:02   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.5 ℃                 Good                0.6s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.6s     模具温度
+   IM-01/im01.oilTemp             44.7 ℃                  Good                0.6s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.6s     射胶压力
+   IM-01/im01.energyTotal         0.333 kWh               Good                0.6s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.5 ℃                  Good                0.6s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       35 L/min                Good                0.6s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.6s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.6s     露点
+   GW-LINE-B/dry01.materialLevel  65 %                    Good                0.6s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.6s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.6s     累计取件
+   EM-01/em01.activePower         125 kW                  Good                0.6s     总有功功率
+   EM-01/em01.powerFactor         0.949                   Good                0.6s     功率因数
+   EM-01/em01.totalEnergy         202.52 kWh              Good                0.6s     累计电能
+   ENV-01/env01.roomTemp          25.8 ℃                  Good                0.6s     车间温度
+   ENV-01/env01.humidity          53 %RH                  Good                0.6s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.6s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.6s     高温报警位
+   ENV-01/env01.plantLoad         50.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2793  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #31   T+62.7s   本地时间 00:45:04   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.5 ℃                 Good                0.7s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.7s     模具温度
+   IM-01/im01.oilTemp             44.8 ℃                  Good                0.7s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.7s     射胶压力
+   IM-01/im01.energyTotal         0.345 kWh               Good                0.7s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.6 ℃                  Good                0.6s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       24 L/min                Good                0.6s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.6s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.6 ℃                 Good                0.6s     露点
+   GW-LINE-B/dry01.materialLevel  64 %                    Good                0.6s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.6s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.6s     累计取件
+   EM-01/em01.activePower         120 kW                  Good                0.6s     总有功功率
+   EM-01/em01.powerFactor         0.932                   Good                0.6s     功率因数
+   EM-01/em01.totalEnergy         208.98 kWh              Good                0.6s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.6s     车间温度
+   ENV-01/env01.humidity          56 %RH                  Good                0.6s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.6s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.6s     高温报警位
+   ENV-01/env01.plantLoad         48.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2872  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #32   T+64.7s   本地时间 00:45:06   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               熔胶                      Good                0.1s     注塑阶段
+   IM-01/im01.statusWord          33                      Good                0.1s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.1s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.1s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.1s     次品数
+   IM-01/im01.barrel1Temp         204.9 ℃                 Good                0.7s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.7s     模具温度
+   IM-01/im01.oilTemp             44.5 ℃                  Good                0.7s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.7s     射胶压力
+   IM-01/im01.energyTotal         0.358 kWh               Good                0.7s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.1s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.2 ℃                  Good                0.6s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       40 L/min                Good                0.6s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.6s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.5 ℃                 Good                0.6s     露点
+   GW-LINE-B/dry01.materialLevel  64 %                    Good                0.6s     料位
+   GW-LINE-B/rob01.cycleTime      2.7 s                   Good                0.6s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.6s     累计取件
+   EM-01/em01.activePower         118 kW                  Good                0.6s     总有功功率
+   EM-01/em01.powerFactor         0.868                   Good                0.6s     功率因数
+   EM-01/em01.totalEnergy         215.49 kWh              Good                0.6s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.7s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.7s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.7s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.7s     高温报警位
+   ENV-01/env01.plantLoad         47.2 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 2948  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #33   T+66.8s   本地时间 00:45:08   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               冷却                      Good                0.2s     注塑阶段
+   IM-01/im01.statusWord          65                      Good                0.2s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.2s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.2s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.2s     次品数
+   IM-01/im01.barrel1Temp         204.7 ℃                 Good                0.7s     料筒1段温
+   IM-01/im01.moldTemp            84.5 ℃                  Good                0.7s     模具温度
+   IM-01/im01.oilTemp             44.5 ℃                  Good                0.7s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.7s     射胶压力
+   IM-01/im01.energyTotal         0.367 kWh               Good                0.7s     累计能耗
+   IM-01/im01.moldTempDev         -0.5 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.2s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.2 ℃                  Good                0.7s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       27 L/min                Good                0.7s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.6s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.1 ℃                 Good                0.6s     露点
+   GW-LINE-B/dry01.materialLevel  63 %                    Good                0.6s     料位
+   GW-LINE-B/rob01.cycleTime      2.9 s                   Good                0.6s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.6s     累计取件
+   EM-01/em01.activePower         120 kW                  Good                0.7s     总有功功率
+   EM-01/em01.powerFactor         0.934                   Good                0.7s     功率因数
+   EM-01/em01.totalEnergy         221.80 kWh              Good                0.7s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.7s     车间温度
+   ENV-01/env01.humidity          54 %RH                  Good                0.7s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.7s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.7s     高温报警位
+   ENV-01/env01.plantLoad         48.0 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 3041  错误 0  写 2  （明细见 CSV）
+══════════════════════════════════════════════════════════════════════════════════════════
+  屏 #34   T+68.8s   本地时间 00:45:10   质量非 Good 或超过 5s 未刷新会标 !! / ~
+══════════════════════════════════════════════════════════════════════════════════════════
+  点位                                值                       质量                  年龄       说明
+   IM-01/im01.stage               开模                      Good                0.2s     注塑阶段
+   IM-01/im01.statusWord          129                     Good                0.2s     状态字
+   IM-01/im01.cycleTime           40.0 s                  Good                0.2s     当前周期
+   IM-01/im01.goodParts           1                       Good                0.2s     合格品数
+   IM-01/im01.rejectParts         0                       Good                0.2s     次品数
+   IM-01/im01.barrel1Temp         204.7 ℃                 Good                0.7s     料筒1段温
+   IM-01/im01.moldTemp            84.6 ℃                  Good                0.7s     模具温度
+   IM-01/im01.oilTemp             44.3 ℃                  Good                0.7s     液压油温
+   IM-01/im01.injectPressure      0 bar                   Good                0.7s     射胶压力
+   IM-01/im01.energyTotal         0.373 kWh               Good                0.7s     累计能耗
+   IM-01/im01.moldTempDev         -0.4 ℃                  Good                0.0s     模温偏差(计算点)
+   IM-01/im01.faultAlarm          False                   Good                0.2s     注塑机报警位
+   GW-LINE-B/mtc01.actualTemp     99.3 ℃                  Good                0.7s     模温机温度
+   GW-LINE-B/mtc01.pumpFlow       30 L/min                Good                0.7s     模温机流量
+   GW-LINE-B/dry01.dryTemp        79.4 ℃                  Good                0.7s     干燥温度
+   GW-LINE-B/dry01.dewPoint       -34.0 ℃                 Good                0.7s     露点
+   GW-LINE-B/dry01.materialLevel  63 %                    Good                0.7s     料位
+   GW-LINE-B/rob01.cycleTime      3.0 s                   Good                0.7s     机械手节拍时间
+   GW-LINE-B/rob01.totalPicks     2                       Good                0.7s     累计取件
+   EM-01/em01.activePower         132 kW                  Good                0.7s     总有功功率
+   EM-01/em01.powerFactor         0.910                   Good                0.7s     功率因数
+   EM-01/em01.totalEnergy         228.04 kWh              Good                0.7s     累计电能
+   ENV-01/env01.roomTemp          25.9 ℃                  Good                0.7s     车间温度
+   ENV-01/env01.humidity          55 %RH                  Good                0.7s     湿度
+   ENV-01/env01.co2               450 ppm                 Good                0.7s     CO2
+   ENV-01/env01.highTempAlarm     False                   Good                0.7s     高温报警位
+   ENV-01/env01.plantLoad         52.8 %                  Good                0.0s     车间负载率(计算点)
+  ── 激活报警：无
+  事件计数：值 3120  错误 0  写 2  （明细见 CSV）
+
+[00:45:11] 停机：达到 --duration，正在优雅停止（先停操作脚本，再停引擎轮询）…
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║ 运行汇总（退出原因：达到 --duration                                                     ）║
+╚══════════════════════════════════════════════════════════════════════════════════════╝
+  配置     : D:\IT\SuperModbus\SuperSampler\samples\InjectionLineMonitor\line.xml
+  操作脚本 : 内置默认序列
+  运行时长 : 70.1s
+
+── 宿主操作动作（脚本侧统计）───────────────────────────────────────────────
+  普通写 1 次  点动写 1 次  报警确认 1 次（其中 NotPending 0）  查看 0 次
+  VerifyMismatch 次数：0（写成功但回读值与写入值不同的次数；框架不自动重试，须人工判断）  宿主侧动作异常 0 次
+
+── 事件计数 ────────────────────────────────────────────────────────────────
+  值变化事件 : 3206（Good 3206 / Uncertain 0 / Bad 0 / Offline 0）
+  报警事件   : 激活 0  清除 0  确认 1（结束时仍在激活：无）
+  写审计事件 : 2（Succeeded 2 / Failed 0 / Indeterminate 0 / Rejected 0）
+  错误事件   : 0（无）
+  错误码     : 无
+  事件总线 : 发出 3209  丢弃 0  订阅者异常 0  活跃订阅 6
+             · 值变化 PointValueChanged              投递 3206 丢弃 0 异常 0
+             · 报警激活 AlarmRaised                   投递 0 丢弃 0 异常 0
+             · 报警清除 AlarmCleared                  投递 0 丢弃 0 异常 0
+             · 报警确认 AlarmAcknowledged             投递 1 丢弃 0 异常 0
+             · 写审计 PointWritten                   投递 2 丢弃 0 异常 0
+             · 错误族 IErrorEvent（基接口）               投递 0 丢弃 0 异常 0
+
+── 质量分布（每显示周期采样一次，全部点位）──────────────────────────────────
+  全部点位合计：采样 4930 点次  Good 100.0%  Uncertain 0.0%  Bad 0.0%  Offline 0.0%
+  运行期间所有点位始终 Good
+
+── 质量跃迁（断线/恢复证据，共 0 条）────────────
+  运行期间无质量跃迁
+
+── 报警三态流水（共 1 条）──────────────────────────────
+  T+25.0s ACKED    im.fault @IM-01/im01.faultAlarm by op01
+  结束时仍在激活：无
+
+── 进程资源（每 30s 采样，长稳判据）────────────────────────────────────────
+  时间     运行(s)  线程  句柄   GC后托管堆   值事件   错误事件
+  00:44:01     0.0    18   340     1.73 MB        0         0
+  00:44:31    30.0    23   414     1.84 MB     1406         0
+  00:45:01    60.1    20   410     1.84 MB     2767         0
+  首末差：线程 +2  句柄 +70  托管堆 +0.10 MB
+
+── 落盘文件 ────────────────────────────────────────────────────────────────
+  values.csv    值变化事件（每点每次变化一行）
+  alarms.csv    报警三态（Raised/Cleared/Acknowledged）
+  writes.csv    写审计事件（框架发出，含四态）
+  errors.csv    错误族事件（含分类/错误码/结构化上下文）
+  ops.csv       宿主操作脚本结果（含 WriteResult 的 VerifyMismatch 与 Readback）
+  resources.csv 每 30s 的进程资源采样
+

@@ -1,0 +1,2 @@
+﻿seq,host_time,state,alarm_id,device,point,type,limit,value,priority,user,message
+1181,2026-09-16 00:44:26.799,Acknowledged,im.fault,IM-01,im01.faultAlarm,,,,,op01,

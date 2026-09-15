@@ -1,0 +1,38 @@
+# ============================================================================
+# InjectionLineMonitor —— zh_CN 文案
+# 语法：KEY = "文案"（一行一键，# 开头为注释行，行尾不支持注释）
+# 被 line.xml 以 ${KEY} 引用；键缺失时 ${KEY} 原样保留（不报错）。
+# ============================================================================
+
+# ── 报警等级名称（框架只校验引用，不消费展示属性）────────────────────────────
+ALC_CRITICAL = "紧急"
+ALC_HIGH = "高"
+ALC_LOW = "低"
+
+# ── 报警文本 ─────────────────────────────────────────────────────────────────
+AL_IM_FAULT = "注塑机报警：设备报警位置位"
+AL_ENV_HIGH_TEMP = "车间温度超过上限（27.0 ℃）"
+
+# ── 单位 ─────────────────────────────────────────────────────────────────────
+UNIT_S = "s"
+UNIT_PCT = "%"
+UNIT_C = "℃"
+UNIT_BAR = "bar"
+UNIT_RPM = "rpm"
+UNIT_AMP = "A"
+UNIT_KW = "kW"
+UNIT_KJ = "kJ"
+UNIT_KWH = "kWh"
+UNIT_KN = "kN"
+UNIT_LPM = "L/min"
+UNIT_MM = "mm"
+UNIT_CPH = "次/h"
+UNIT_V = "V"
+UNIT_HZ = "Hz"
+UNIT_RH = "%RH"
+UNIT_DB = "dB"
+UNIT_PPM = "ppm"
+UNIT_UGM3 = "ug/m3"
+UNIT_PA = "Pa"
+UNIT_LX = "lx"
+UNIT_PCT_MIN = "%/min"

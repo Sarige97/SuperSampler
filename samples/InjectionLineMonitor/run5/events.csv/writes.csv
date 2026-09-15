@@ -1,0 +1,24 @@
+﻿seq,host_time,device,point,value,user,outcome,message
+976,2026-09-15 23:59:48.513,IM-01,im01.cavitySetTemp,220,op01,Succeeded,-
+6278,2026-09-16 00:01:48.498,IM-01,im01.cavitySetTemp,221,op01,Succeeded,-
+7009,2026-09-16 00:02:04.301,IM-01,im01.moldCloseJog,True,op01,Succeeded,-
+11576,2026-09-16 00:03:48.500,IM-01,im01.cavitySetTemp,222,op01,Succeeded,-
+16875,2026-09-16 00:05:48.500,IM-01,im01.cavitySetTemp,223,op01,Succeeded,-
+17972,2026-09-16 00:06:13.495,IM-01,im01.cavitySetTemp,400,op01,Rejected,ss.reason.aboveMax
+22109,2026-09-16 00:07:48.499,IM-01,im01.cavitySetTemp,224,op01,Succeeded,-
+22746,2026-09-16 00:08:04.299,IM-01,im01.moldCloseJog,True,op01,Succeeded,-
+27239,2026-09-16 00:09:48.499,IM-01,im01.cavitySetTemp,225,op01,Succeeded,-
+32442,2026-09-16 00:11:48.503,IM-01,im01.cavitySetTemp,226,op01,Succeeded,-
+37670,2026-09-16 00:13:48.500,IM-01,im01.cavitySetTemp,227,op01,Succeeded,-
+38391,2026-09-16 00:14:04.300,IM-01,im01.moldCloseJog,True,op01,Succeeded,-
+41907,2026-09-16 00:15:48.500,IM-01,im01.cavitySetTemp,220,op01,Succeeded,-
+42694,2026-09-16 00:16:13.496,IM-01,im01.cavitySetTemp,400,op01,Rejected,ss.reason.aboveMax
+45570,2026-09-16 00:17:48.501,IM-01,im01.cavitySetTemp,221,op01,Succeeded,-
+49269,2026-09-16 00:19:50.449,IM-01,im01.cavitySetTemp,222,op01,Succeeded,-
+49662,2026-09-16 00:20:06.190,IM-01,im01.moldCloseJog,True,op01,Succeeded,-
+52315,2026-09-16 00:21:50.720,IM-01,im01.cavitySetTemp,223,op01,Succeeded,-
+55312,2026-09-16 00:23:50.704,IM-01,im01.cavitySetTemp,224,op01,Succeeded,-
+58141,2026-09-16 00:25:50.540,IM-01,im01.cavitySetTemp,225,op01,Succeeded,-
+58538,2026-09-16 00:26:06.268,IM-01,im01.moldCloseJog,True,op01,Succeeded,-
+58715,2026-09-16 00:26:13.495,IM-01,im01.cavitySetTemp,400,op01,Rejected,ss.reason.aboveMax
+61155,2026-09-16 00:27:50.579,IM-01,im01.cavitySetTemp,226,op01,Succeeded,-

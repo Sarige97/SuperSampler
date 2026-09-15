@@ -1,0 +1,33 @@
+# ============================================================================
+# 断线演练脚本（配合断路器控制文件注入故障）
+#   T+20s  breaker: offline refuse 3s  → 公共口 2502 整口断电（连不上，RST）
+#   T+45s  breaker: offline silent 5s  → 公共口 2502 整口黑洞（连上了但永不回帧）
+# 时间点必须与注入脚本一致：samples/InjectionLineMonitor/run/run2/inject.sh
+# ============================================================================
+
+ 5s note 断线演练开始：先看基线与端口状态
+ 8s show IM-01/im01.moldTemp
+12s show GW-LINE-B/mtc01.actualTemp
+
+18s note 基线良好；下一屏应能看见 refuse 窗口开始
+18s show IM-01/im01.moldTemp
+
+22s note refuse 窗口内尝试写（预期 Failed 或 Indeterminate）
+22s write IM-01/im01.cavitySetTemp 240
+25s show IM-01/im01.moldTemp
+
+30s note 恢复后（期待 Good）
+30s show IM-01/im01.barrel1Temp
+35s write IM-01/im01.cavitySetTemp 232
+
+43s note silent 窗口（黑洞）：读会一直超时
+43s show IM-01/im01.moldTemp
+47s write IM-01/im01.cavitySetTemp 236
+48s show IM-01/im01.moldTemp
+52s show IM-01/im01.moldTemp
+
+58s note 恢复后（期待 Good）
+58s show IM-01/im01.moldTemp
+62s write IM-01/im01.cavitySetTemp 234
+66s show IM-01/im01.moldTemp
+70s note 断线演练结束

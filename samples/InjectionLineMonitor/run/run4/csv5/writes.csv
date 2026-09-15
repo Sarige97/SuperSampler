@@ -1,0 +1,4 @@
+﻿seq,host_time,device,point,value,user,outcome,message
+664,2026-09-15 23:39:29.535,IM-01,im01.cavitySetTemp,233,op01,Succeeded,-
+882,2026-09-15 23:39:43.514,IM-01,im01.cavitySetTemp,236,op01,Indeterminate,ss.error.writeFailed
+1459,2026-09-15 23:40:04.524,IM-01,im01.cavitySetTemp,234,op01,Succeeded,-

@@ -81,10 +81,11 @@ public static partial class SamplerConfigLoader
                     point.Area = block.Area;
                     point.ScanGroup = block.ScanGroup;
                     if (block.UnitId.HasValue) point.UnitIdOverride = block.UnitId;
-                    if (pointElement.Attribute("swap") == null)
+                    if (pointElement.Attribute("swap") == null && blockElement.Attribute("swap") != null)
                     {
-                        // 块内点位未写 swap：由块决定（Block@swap，缺省 word）。
-                        // 视为块作用域内的显式声明，不再向 Defaults/Device 兜底（docs/01 第 6 节）。
+                        // 只有块**显式声明** swap 时才管住块内点位（窄作用域优先，ADR D38）。
+                        // 块未声明时绝不强塞缺省值：曾因此把块内所有多字点位按 word/CDAB 解错
+                        // （累计电能、float64 读出天文数字，findings D27），须让 Defaults → Device → Global 正常兜底。
                         point.Swap = block.Swap;
                         point.HasSwapDeclared = true;
                     }

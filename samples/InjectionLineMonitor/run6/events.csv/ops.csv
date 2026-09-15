@@ -1,0 +1,4 @@
+﻿host_time,at_s,index,command,target,arg,outcome,verify_mismatch,readback,readback_quality,detail
+2026-09-16 00:44:06.822,5.029,1,write,IM-01/im01.cavitySetTemp,205,Succeeded,False,205 ℃[Good],Good,
+2026-09-16 00:44:17.598,15.805,2,pulse,IM-01/im01.moldCloseJog,True,Succeeded,False,-,-,
+2026-09-16 00:44:26.803,25.010,3,ack,IM-01/im01.faultAlarm,im.fault,Acknowledged,,,,

@@ -1,0 +1,16 @@
+﻿host_time,at_s,index,command,target,arg,outcome,verify_mismatch,readback,readback_quality,detail
+2026-09-15 23:44:39.036,10.021,3,write,IM-01/im01.cavitySetTemp,235,Succeeded,False,235 ℃[Good],Good,
+2026-09-15 23:44:44.821,15.806,4,pulse,IM-01/im01.moldCloseJog,True,Succeeded,False,-,-,
+2026-09-15 23:44:49.020,20.004,5,write,IM-01/im01.cavitySetTemp,400,Rejected,False,-,-,SS.WRITE.REJECTED
+2026-09-15 23:44:54.016,25.000,6,write,IM-01/im01.totalMolds,100,Rejected,False,-,-,SS.WRITE.REJECTED
+2026-09-15 23:44:59.020,30.004,7,write,ENV-01/env01.acSetTemp,28,Succeeded,False,28 ℃[Good],Good,
+2026-09-15 23:45:09.018,40.002,8,write,IM-01/im01.ratedPower,45.5,Succeeded,False,-,-,
+2026-09-15 23:45:09.022,40.006,9,write,EM-01/em01.demandThreshold,320,Succeeded,False,320 kW[Good],Good,
+2026-09-15 23:45:14.019,45.003,10,ack,ENV-01/env01.roomTemp,env.highTemp,Acknowledged,,,,
+2026-09-15 23:45:24.018,55.002,12,write,PROT-02/prot02.singleWord,1234,Succeeded,False,-,-,
+2026-09-15 23:45:29.019,60.003,13,write,PROT-02/prot02.twoWordValue,123456,Failed,False,-,-,MODBUS.EXCEPTION.02
+2026-09-15 23:45:39.018,70.002,14,write,IM-01/im01.estop,True,Succeeded,False,-,-,
+2026-09-15 23:45:49.018,80.002,16,write,IM-01/im01.estop,False,Succeeded,False,-,-,
+2026-09-15 23:45:54.017,85.000,17,ack,IM-01/im01.faultAlarm,im.fault,Acknowledged,,,,
+2026-09-15 23:45:59.019,90.003,18,write,ENV-01/env01.acSetTemp,24,Succeeded,False,24 ℃[Good],Good,
+2026-09-15 23:46:19.018,110.002,19,write,GW-LINE-B/dry01.materialBatch,BATCH-2026W38,Succeeded,False,-,-,

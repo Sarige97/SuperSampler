@@ -148,8 +148,10 @@ public static partial class SamplerConfigLoader
             if (stringOptions?.Attribute("padding") != null || stringOptions?.Attribute("byteAligned") != null)
                 found.Add($"点位 {id} 的 String@padding/@byteAligned（字符串填充与字节对齐，后续迭代）");
 
-            if (point.Element("Scale")?.Attribute("mode") != null)
-                found.Add($"点位 {id} 的 Scale@mode（缩放模式，v1 仅支持线性）");
+            // D28：只有**非 linear** 的 mode 才算未实现；显式写 mode="linear"（受支持值）不该报警
+            var scaleMode = (string?)point.Element("Scale")?.Attribute("mode");
+            if (scaleMode != null && !string.Equals(scaleMode.Trim(), "linear", StringComparison.OrdinalIgnoreCase))
+                found.Add($"点位 {id} 的 Scale@mode={scaleMode.Trim()}（缩放模式，v1 仅支持 linear）");
         }
 
         // 报警等级的展示属性（宿主负责渲染；框架只校验 @id 引用）

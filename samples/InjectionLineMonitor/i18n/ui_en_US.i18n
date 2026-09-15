@@ -1,0 +1,34 @@
+# ============================================================================
+# InjectionLineMonitor —— en_US fallback catalog
+# Same key set as zh_CN; only loaded when Global@language/fallbackLanguage = en_US.
+# ============================================================================
+
+ALC_CRITICAL = "Critical"
+ALC_HIGH = "High"
+ALC_LOW = "Low"
+
+AL_IM_FAULT = "Injection machine alarm: device alarm bit set"
+AL_ENV_HIGH_TEMP = "Shop-floor temperature above high limit (27.0 C)"
+
+UNIT_S = "s"
+UNIT_PCT = "%"
+UNIT_C = "C"
+UNIT_BAR = "bar"
+UNIT_RPM = "rpm"
+UNIT_AMP = "A"
+UNIT_KW = "kW"
+UNIT_KJ = "kJ"
+UNIT_KWH = "kWh"
+UNIT_KN = "kN"
+UNIT_LPM = "L/min"
+UNIT_MM = "mm"
+UNIT_CPH = "pcs/h"
+UNIT_V = "V"
+UNIT_HZ = "Hz"
+UNIT_RH = "%RH"
+UNIT_DB = "dB"
+UNIT_PPM = "ppm"
+UNIT_UGM3 = "ug/m3"
+UNIT_PA = "Pa"
+UNIT_LX = "lx"
+UNIT_PCT_MIN = "%/min"

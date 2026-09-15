@@ -1,0 +1,136 @@
+{
+  "ports": [
+    {
+      "id": "P1-LINE-A",
+      "transport": "tcp",
+      "internal_port": 16002,
+      "public_port": 2502,
+      "slaves": [
+        {
+          "unit": 1,
+          "name": "IM-01"
+        },
+        {
+          "unit": 2,
+          "name": "MTC-01"
+        },
+        {
+          "unit": 3,
+          "name": "DRY-01"
+        },
+        {
+          "unit": 4,
+          "name": "ROB-01"
+        }
+      ]
+    },
+    {
+      "id": "P2-LINE-B",
+      "transport": "tcp",
+      "internal_port": 16003,
+      "public_port": 2503,
+      "slaves": [
+        {
+          "unit": 1,
+          "name": "IM-02"
+        },
+        {
+          "unit": 2,
+          "name": "MTC-02"
+        },
+        {
+          "unit": 3,
+          "name": "DRY-02"
+        },
+        {
+          "unit": 4,
+          "name": "ROB-02"
+        }
+      ]
+    },
+    {
+      "id": "P3-VERIFY",
+      "transport": "tcp",
+      "internal_port": 16004,
+      "public_port": 2504,
+      "slaves": [
+        {
+          "unit": 5,
+          "name": "EM-01"
+        },
+        {
+          "unit": 6,
+          "name": "ENV-01"
+        },
+        {
+          "unit": 7,
+          "name": "WO-ABCD"
+        },
+        {
+          "unit": 8,
+          "name": "WO-BADC"
+        },
+        {
+          "unit": 9,
+          "name": "WO-CDAB"
+        },
+        {
+          "unit": 10,
+          "name": "WO-DCBA"
+        },
+        {
+          "unit": 11,
+          "name": "RO-LOCK"
+        },
+        {
+          "unit": 12,
+          "name": "PROT-O2"
+        },
+        {
+          "unit": 13,
+          "name": "BOUND"
+        },
+        {
+          "unit": 14,
+          "name": "SLOW-500"
+        },
+        {
+          "unit": 15,
+          "name": "SLOW-2000"
+        }
+      ]
+    },
+    {
+      "id": "P4-RTU-LINE",
+      "transport": "rtuOverTcp",
+      "internal_port": 16005,
+      "public_port": 2505,
+      "slaves": [
+        {
+          "unit": 1,
+          "name": "IM-03"
+        },
+        {
+          "unit": 2,
+          "name": "MTC-03"
+        },
+        {
+          "unit": 3,
+          "name": "DRY-03"
+        },
+        {
+          "unit": 4,
+          "name": "ROB-03"
+        },
+        {
+          "unit": 20,
+          "name": "EM-02"
+        },
+        {
+          "unit": 21,
+          "name": "ENV-02"
+        }
+      ]
+    }
+  ]
+}
