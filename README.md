@@ -4,7 +4,11 @@
 把「按配置采集 + 解析成工程值 + 报警 + 写回 + 事件」打包成一个可嵌入的库。宿主只管界面、权限、存储与业务，
 通讯调度与数据质量由框架负责。
 
-> **文本徽章**：`[v0.1.0]` · `[.NET Framework 4.6]` · `[MIT]` · `[build passing 1432 tests]`
+[![version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/Sarige97/SuperSampler)
+[![.NET](https://img.shields.io/badge/.NET%20Framework-4.6-512BD4)](https://github.com/Sarige97/SuperSampler)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![tests](https://img.shields.io/badge/tests-1432%20passing-brightgreen)](docs/测试与验收/验收报告.md)
+[![docs](https://img.shields.io/badge/docs-使用说明-2f6fed)](docs/使用说明.md)
 
 ---
 
@@ -29,18 +33,14 @@
 
 ## 架构分层
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  宿主（上位机应用）:界面 / 权限 / 存储 / 命令 / 在线状态查询     │   ← 框架之外
-├─────────────────────────────────────────────────────────────┤
-│  SuperSampler.Abstractions  契约层:值模型 / 错误模型 / 事件 / 门面接口（IDeviceManager / IModbusDebugTool）│
-│  SuperSampler.Core          引擎层:配置加载校验 / 调度 / 编解码 / 报警 / 事件总线 / 退避策略            │
-│  SuperSampler.Drivers.Modbus 驱动层:Modbus TCP / RTU / RTU-over-TCP 协议实现                          │
-│  SuperSampler.Hosting        宿主壳:（预留扩展位，当前为空壳）                                         │
-├─────────────────────────────────────────────────────────────┤
-│  现场:PLC / 仪表 / 网关（Modbus 从站）                        │
-└─────────────────────────────────────────────────────────────┘
-```
+![SuperSampler 架构分层](assets/architecture.png)
+
+- **上位机应用（宿主）**：界面、权限、存储、业务逻辑——框架**不承担**，宿主通过门面 API 读写、订阅事件。
+- **SuperSampler.Abstractions（契约层）**：值模型 / 错误模型 / 事件契约 / 门面接口，宿主可见的最小 API 面。
+- **SuperSampler.Core（引擎层）**：配置加载与全量校验、毫秒调度与自动分组、编解码与脚本、报警引擎、事件总线、两级退避。
+- **SuperSampler.Drivers.Modbus（驱动层）**：Modbus TCP / RTU / RTU-over-TCP 协议实现（帧层、超时、重试分类、keepalive）。
+- **现场设备**：PLC / 仪表 / 控制器等 Modbus 从站，支持 TCP 网关与 RTU 串口多从站。
+- **单 DLL**：`Core + Abstractions + Drivers + Jint` 经 ILRepack 合并为一个 `SuperSampler.Core.dll`，宿主只放这一个文件。
 
 ## 目录结构
 
@@ -53,6 +53,8 @@ SuperSampler/
 │   └── SuperSampler.Hosting/           宿主壳（当前为空壳）
 ├── samples/
 │   └── InjectionLineMonitor/           net46 Console 示例宿主（全功能演示）
+├── assets/
+│   └── architecture.png                架构分层图（README 首页用）
 ├── tests/
 │   ├── SuperSampler.UnitTests/         单元测试（1257 例）
 │   └── SuperSampler.IntegrationTests/  集成测试（175 例，复杂桩 + 断路器真链路）
