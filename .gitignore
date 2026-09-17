@@ -10,3 +10,10 @@ TestResults/
 artifacts/
 *.nuget.props
 *.nuget.targets
+
+# 开发工具与本地证据（不入库）
+_smoke/
+*.stackdump
+samples/InjectionLineMonitor/run/
+samples/InjectionLineMonitor/run5/
+samples/InjectionLineMonitor/run6/
