@@ -13,8 +13,8 @@ namespace SuperSampler.IntegrationTests;
 /// <summary>
 /// 驱动层重试分类（CHAOS-6 最小版）+ 写超时不重写（GATE-1 驱动侧）。
 /// 用测试进程内的 TCP 假从站按脚本应答，不依赖外部模拟器，因此无需跳过、完全确定性。
-/// 覆盖：永久码不重试、瞬时码按预算重试、瞬时后恢复、超时按预算重试、
-/// 重试预算=0 时只发一次请求（绝不自动重写）、无应答与异常码两类分开上报。
+/// 覆盖：永久码不重试、瞬时码按预算重试、0x0B（网关目标无响应）按链路错、瞬时后恢复、
+/// 超时按预算重试、重试预算=0 时只发一次请求（绝不自动重写）、无应答与异常码两类分开上报。
 /// </summary>
 public sealed class DriverRetryTests : IDisposable
 {
@@ -223,7 +223,6 @@ public sealed class DriverRetryTests : IDisposable
     [InlineData(0x03)] // 非法数据值
     [InlineData(0x04)] // 从站设备故障
     [InlineData(0x08)] // 存储奇偶校验错
-    [InlineData(0x0B)] // 网关目标设备无响应（未映射 → 按永久处理）
     public void Permanent_exception_codes_are_never_retried(byte code)
     {
         Reply(_ => Exception(code));
@@ -236,6 +235,26 @@ public sealed class DriverRetryTests : IDisposable
         Assert.Equal(ModbusFailureKind.Protocol, reply.Kind);
         Assert.Equal(code, reply.ExceptionCode);
         Assert.Equal(1, RequestCount); // 永久码重试无意义，量 1 次即止
+    }
+
+    /// <summary>
+    /// 0x0B GatewayTargetNoResponse 按 docs/02 §2.2 = **LinkDown /「按链路」**（findings D104）：
+    /// 不重试（请求级重试无意义），也不当设备异常码（否则会被当作「设备在回话」而不进退避）——
+    /// 交上层按链路级退避 + 关连接重连处理。
+    /// </summary>
+    [Fact]
+    public void Gateway_target_no_response_is_a_link_error_and_is_not_retried()
+    {
+        Reply(_ => Exception(0x0B));
+        Reply(_ => Exception(0x0B));
+        Reply(_ => Exception(0x0B));
+
+        var reply = WriteWith(retries: 2);
+
+        Assert.False(reply.Success);
+        Assert.Equal(ModbusFailureKind.LinkDown, reply.Kind);
+        Assert.Equal(0x0B, reply.ExceptionCode);
+        Assert.Equal(1, RequestCount);
     }
 
     [Fact]

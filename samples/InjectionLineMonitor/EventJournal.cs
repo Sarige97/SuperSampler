@@ -166,12 +166,6 @@ internal sealed class EventJournal : IDisposable
 
     public IReadOnlyList<SubscriptionInfo> Subscriptions => _subscriptions;
 
-    public IReadOnlyDictionary<string, long> WriteOutcomes => _writeOutcomes;
-
-    public IReadOnlyDictionary<string, long> ErrorsByClass => _errorsByClass;
-
-    public IReadOnlyDictionary<string, long> ErrorsByCode => _errorsByCode;
-
     public IReadOnlyList<string> ActiveAlarms
     {
         get

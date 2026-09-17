@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,6 +12,12 @@ namespace SuperSampler.UnitTests.Support;
 public sealed class FakeLinkCall
 {
     public FakeLinkCall(bool isWrite, bool isMulti, DataArea area, int address, int count, byte unitId)
+        : this(isWrite, isMulti, area, address, count, unitId, 0, 0, 0)
+    {
+    }
+
+    public FakeLinkCall(bool isWrite, bool isMulti, DataArea area, int address, int count, byte unitId,
+        int timeoutMs, int retries, int retryIntervalMs)
     {
         IsWrite = isWrite;
         IsMulti = isMulti;
@@ -19,6 +25,9 @@ public sealed class FakeLinkCall
         Address = address;
         Count = count;
         UnitId = unitId;
+        TimeoutMs = timeoutMs;
+        Retries = retries;
+        RetryIntervalMs = retryIntervalMs;
     }
 
     public bool IsWrite { get; }
@@ -28,6 +37,15 @@ public sealed class FakeLinkCall
     public int Address { get; }
     public int Count { get; }
     public byte UnitId { get; }
+
+    /// <summary>本次调用传入的请求超时（<c>Device@requestTimeoutMs</c> → 驱动 per-request 超时）。</summary>
+    public int TimeoutMs { get; }
+
+    /// <summary>本次调用传入的重试次数（优先级：设备 &lt;Retry&gt; &gt; 链路 &lt;Retry&gt; &gt; 全局）。</summary>
+    public int Retries { get; }
+
+    /// <summary>本次调用传入的重试间隔（毫秒）。</summary>
+    public int RetryIntervalMs { get; }
 }
 
 /// <summary>故障注入规则：命中条件 + 失败形态。全部字段可选，null 表示不限定。</summary>
@@ -61,8 +79,7 @@ public sealed class FakeFaultRule
 
 /// <summary>
 /// 假主站链路：B1 推出 IModbusLink 后的确定性测试缝（findings B1）。
-/// v2 扩展（docs/07 测试计划 §2.2）：可编程读数据、故障注入规则、线程安全调用记录器、连接状态模拟。
-/// 兼容性：v1 成员（ReadReplies/WriteSingleReplies/WriteMultiReplies/WriteSingleValues/WriteMultiValues/ReadCalls）语义不变。
+/// 可编程读数据、故障注入规则、线程安全调用记录器、连接状态模拟。
 /// </summary>
 internal sealed class FakeModbusLink : IModbusLink
 {
@@ -77,7 +94,7 @@ internal sealed class FakeModbusLink : IModbusLink
         _isOpen = isOpen;
     }
 
-    // ───────────── v1 兼容面（语义不变） ─────────────
+    // ───────────── 应答队列与调用记录 ─────────────
 
     public Queue<ModbusReply> ReadReplies { get; } = new();
     public Queue<ModbusReply> WriteSingleReplies { get; } = new();
@@ -110,6 +127,13 @@ internal sealed class FakeModbusLink : IModbusLink
         }
     }
 
+    /// <summary>
+    /// 读请求前先懒重连（= 真实通道「关闭后下一次请求自动连上」的行为）。
+    /// 默认 false：多数用例只关心调用序列，不需要连接状态机；两层退避的用例打开它，
+    /// 才能用 OpenCount/CloseCount 成对断言「关连接 / 重连」。
+    /// </summary>
+    public bool ReopenOnRead { get; set; }
+
     // ───────────── 可编程读数据 ─────────────
 
     private readonly Dictionary<(byte UnitId, DataArea Area, int Address), ushort[]> _readData = new();
@@ -121,7 +145,7 @@ internal sealed class FakeModbusLink : IModbusLink
         lock (_gate) _readData[(unitId, area, address)] = (ushort[])registers.Clone();
     }
 
-    /// <summary>未命中精确规则的读的兜底成功数据（未设置时保持 v1 行为：LinkDown）。</summary>
+    /// <summary>未命中精确规则的读的兜底成功数据（未设置时读请求判 LinkDown）。</summary>
     public ushort[]? DefaultReadData
     {
         get { lock (_gate) return _defaultReadData; }
@@ -209,10 +233,12 @@ internal sealed class FakeModbusLink : IModbusLink
 
     public ModbusReply Read(DataArea area, int address, int count, byte unitId, int timeoutMs, int retries, int retryIntervalMs)
     {
+        if (ReopenOnRead) SetOpen(true);   // 懒重连（真实通道行为）
+
         lock (_gate)
         {
             ReadCalls++;
-            _calls.Add(new FakeLinkCall(false, false, area, address, count, unitId));
+            _calls.Add(new FakeLinkCall(false, false, area, address, count, unitId, timeoutMs, retries, retryIntervalMs));
         }
 
         var fault = MatchFault(isWrite: false, area, address, unitId);
@@ -247,7 +273,7 @@ internal sealed class FakeModbusLink : IModbusLink
         lock (_gate)
         {
             WriteSingleValues.Add(value);
-            _calls.Add(new FakeLinkCall(true, false, area, address, 1, unitId));
+            _calls.Add(new FakeLinkCall(true, false, area, address, 1, unitId, timeoutMs, retries, retryIntervalMs));
         }
 
         var fault = MatchFault(isWrite: true, area, address, unitId);
@@ -269,7 +295,7 @@ internal sealed class FakeModbusLink : IModbusLink
         lock (_gate)
         {
             WriteMultiValues.Add((ushort[])values.Clone());
-            _calls.Add(new FakeLinkCall(true, true, area, address, values.Length, unitId));
+            _calls.Add(new FakeLinkCall(true, true, area, address, values.Length, unitId, timeoutMs, retries, retryIntervalMs));
         }
 
         var fault = MatchFault(isWrite: true, area, address, unitId);
@@ -302,6 +328,12 @@ internal sealed class FakeModbusLink : IModbusLink
             _ => ModbusReply.Fail(ModbusFailureKind.LinkDown, 0, "injected link down", elapsed),
         };
     }
+
+    /// <summary>
+    /// 关闭连接（调度器链路级退避的「关闭连接 → 等待 → 重连」第一步）。
+    /// FakeModbusLink 用同一套开关计数，因此 CloseCount 就是「重建过几次连接」的证据。
+    /// </summary>
+    public void Close() => SetOpen(false);
 
     public void Dispose()
     {

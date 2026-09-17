@@ -1,4 +1,0 @@
-﻿host_time,at_s,index,command,target,arg,outcome,verify_mismatch,readback,readback_quality,detail
-2026-09-15 23:39:29.536,15.017,3,write,IM-01/im01.cavitySetTemp,233,Succeeded,False,233 ℃[Good],Good,
-2026-09-15 23:39:43.514,28.995,5,write,IM-01/im01.cavitySetTemp,236,Indeterminate,False,-,-,MODBUS.TIMEOUT
-2026-09-15 23:40:04.524,50.004,9,write,IM-01/im01.cavitySetTemp,234,Succeeded,False,234 ℃[Good],Good,

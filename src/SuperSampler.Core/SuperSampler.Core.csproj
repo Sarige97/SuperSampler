@@ -8,23 +8,11 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Jint" Version="2.11.58" />
-    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.18.2" PrivateAssets="all" />
+    <!--
+      发布打包（把 Jint 合并进单 DLL）用的 MSBuild 任务。
+      PrivateAssets=all：合包工具不进最终产物依赖；
+      合并目标本身在同目录 ILRepack.targets，只在 -p:EnableILRepack=true 时执行（见该文件注释）。
+    -->
+    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.46" PrivateAssets="all" />
   </ItemGroup>
-
-  <!--
-    发布打包：把 Jint 合并进 SuperSampler.Core.dll，宿主只拿一个 DLL（对外保持零依赖）。
-    仅在发布时启用：dotnet build -p:EnableILRepack=true
-    日常构建/测试不合并，保持快速与可调试。
-  -->
-  <Target Name="ILRepackMerge" AfterTargets="Build" Condition="'$(EnableILRepack)' == 'true'">
-    <ItemGroup>
-      <MergeAssemblies Include="$(OutputPath)Jint.dll" />
-    </ItemGroup>
-    <ILRepack
-      OutputAssembly="$(OutputPath)$(AssemblyName)-merged.dll"
-      InputAssemblies="@(MergeAssemblies)"
-      PrimaryAssembly="$(OutputPath)$(AssemblyName).dll"
-      Internalize="true"
-      Parallel="true" />
-  </Target>
 </Project>

@@ -15,18 +15,10 @@ public class FieldCoverageTests
 {
     // ─────────────── 构造器 ───────────────
 
-    private const string DefaultScanGroups =
-        "<ScanGroups>"
-        + "<ScanGroup id=\"normal\" />"
-        + "<ScanGroup id=\"fast\" rateMs=\"500\" />"
-        + "<ScanGroup id=\"ondemand\" mode=\"onDemand\" />"
-        + "</ScanGroups>";
-
-    private static SamplerConfiguration Cfg(string points, string defaults = "", string blocks = "", string top = "", string calc = "", string? scan = null)
+    private static SamplerConfiguration Cfg(string points, string defaults = "", string blocks = "", string top = "", string calc = "")
     {
         var xml =
             "<HostConfig schemaVersion=\"3.0\">"
-            + (scan ?? DefaultScanGroups)
             + "<Transports><Transport id=\"tcp1\" host=\"127.0.0.1\" /></Transports>"
             + "<Devices><Device id=\"d1\" transport=\"tcp1\" pointSet=\"ps1\" unitId=\"1\" /></Devices>"
             + top
@@ -41,7 +33,6 @@ public class FieldCoverageTests
     private static PointConfig BP0(SamplerConfiguration c) => c.PointSets[0].Blocks[0].Points[0];
     private static DeviceConfig D0(SamplerConfiguration c) => c.Devices[0];
     private static TransportConfig T0(SamplerConfiguration c) => c.Transports[0];
-    private static ScanGroupConfig S(SamplerConfiguration c, int i) => c.ScanGroups[i];
     private static GlobalOptions G(SamplerConfiguration c) => c.Global;
 
     /// <summary>点位快捷构造：默认 id=p、address=0。</summary>
@@ -77,7 +68,7 @@ public class FieldCoverageTests
     private static IEnumerable<FieldCase> ParsedCases()
     {
         // Global（nullText / swap 已接线，见 ADR D38；正向断言见 FieldCoverageGapsTests.GlobalNullTextAndSwapAreWired）
-        yield return C("Global/Polling@rateMs", Cfg(Pt(""), top: "<Global><Polling rateMs=\"250\" /></Global>"), c => Assert.Equal(250, G(c).DefaultRateMs));
+        yield return C("Global/Polling@defaultIntervalMs", Cfg(Pt(""), top: "<Global><Polling defaultIntervalMs=\"250\" /></Global>"), c => Assert.Equal(250, G(c).DefaultIntervalMs));
         yield return C("Global/Polling@requestTimeoutMs", Cfg(Pt(""), top: "<Global><Polling requestTimeoutMs=\"750\" /></Global>"), c => Assert.Equal(750, G(c).RequestTimeoutMs));
         yield return C("Global/Quality@onCommErrorValue", Cfg(Pt(""), top: "<Global><Quality onCommErrorValue=\"null\" /></Global>"), c => Assert.Equal("null", G(c).OnCommErrorValue));
         yield return C("Diagnostics@allowRawAccess", Cfg(Pt(""), top: "<Global /><Diagnostics allowRawAccess=\"true\" />"), c => Assert.True(G(c).AllowRawAccess));
@@ -91,11 +82,9 @@ public class FieldCoverageTests
         yield return C("Global/Retry@backoff", Cfg(Pt(""), top: "<Global><Retry backoff=\"fixed\" /></Global>"), c => Assert.Equal("fixed", G(c).RetryBackoff));
         yield return C("Global/Retry@escalateAfter", Cfg(Pt(""), top: "<Global><Retry escalateAfter=\"7\" /></Global>"), c => Assert.Equal(7, G(c).EscalateAfter));
         yield return C("Global/Retry@budgetMs", Cfg(Pt(""), top: "<Global><Retry budgetMs=\"1200\" /></Global>"), c => Assert.Equal(1200, G(c).BudgetMs));
-        yield return C("Global/Scheduler@maxRegistersPerRead", Cfg(Pt(""), top: "<Global><Scheduler maxRegistersPerRead=\"60\" /></Global>"), c => Assert.Equal(60, G(c).MaxRegistersPerRead));
-        yield return C("Global/Scheduler@maxBitsPerRead", Cfg(Pt(""), top: "<Global><Scheduler maxBitsPerRead=\"900\" /></Global>"), c => Assert.Equal(900, G(c).MaxBitsPerRead));
-        yield return C("Global/Scheduler@mergeGap", Cfg(Pt(""), top: "<Global><Scheduler mergeGap=\"3\" /></Global>"), c => Assert.Equal(3, G(c).MergeGap));
-        yield return C("Global/Script@timeoutMs", Cfg(Pt(""), top: "<Global><Script timeoutMs=\"120\" /></Global>"), c => Assert.Equal(120, G(c).ScriptTimeoutMs));
-        yield return C("Global/Script@onError", Cfg(Pt(""), top: "<Global><Script onError=\"keepLast\" /></Global>"), c => Assert.Equal("keepLast", G(c).ScriptOnError));
+        yield return C("Global/Scheduler@groupLimitRegisters", Cfg(Pt(""), top: "<Global><Scheduler groupLimitRegisters=\"60\" /></Global>"), c => Assert.Equal(60, G(c).GroupLimitRegisters));
+        yield return C("Global/Scheduler@groupLimitBits", Cfg(Pt(""), top: "<Global><Scheduler groupLimitBits=\"900\" /></Global>"), c => Assert.Equal(900, G(c).GroupLimitBits));
+        yield return C("Global/Scheduler@ignoreGap", Cfg(Pt(""), top: "<Global><Scheduler ignoreGap=\"3\" /></Global>"), c => Assert.Equal(3, G(c).IgnoreGap));
         yield return C("Global/Quality@onCommError", Cfg(Pt(""), top: "<Global><Quality onCommError=\"uncertain\" /></Global>"), c => Assert.Equal("uncertain", G(c).OnCommError));
         yield return C("Global/Quality@staleAfterMs", Cfg(Pt(""), top: "<Global><Quality staleAfterMs=\"9000\" /></Global>"), c => Assert.Equal(9000, G(c).StaleAfterMs));
 
@@ -127,11 +116,11 @@ public class FieldCoverageTests
         yield return C("Write@confirm", Cfg(Pt("access=\"write\"", "<Write confirm=\"true\" />")), c => Assert.True(P0(c).Write!.Confirm));
         yield return C("Write@pulseMs", Cfg(Pt("access=\"write\"", "<Write pulseMs=\"500\" />")), c => Assert.Equal(500, P0(c).Write!.PulseMs));
 
-        // ScanGroups
-        yield return C("ScanGroup@id", Cfg(Pt("")), c => Assert.Equal("normal", S(c, 0).Id));
-        yield return C("ScanGroup@mode", Cfg(Pt("")), c => Assert.Equal("ondemand", S(c, 2).Mode, ignoreCase: true));
-        yield return C("ScanGroup@rateMs", Cfg(Pt("")), c => Assert.Equal(500, S(c, 1).RateMs));
-        yield return C("ScanGroup@jitterMs", Cfg(Pt(""), scan: "<ScanGroups><ScanGroup id=\"normal\" jitterMs=\"30\" /></ScanGroups>"), c => Assert.Equal(30, S(c, 0).JitterMs));
+        // 间隔与模式（原 ScanGroups 已删除：节奏写在点位/块自己身上）
+        yield return C("Point@intervalMs", Cfg(Pt("intervalMs=\"200\"")), c => Assert.Equal(200, P0(c).IntervalMs));
+        yield return C("Point@mode", Cfg(Pt("mode=\"onDemand\"")), c => Assert.Equal("ondemand", P0(c).Mode));
+        yield return C("Block@intervalMs", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" intervalMs=\"500\" /></Blocks>"), c => Assert.Equal(500, B0(c).IntervalMs));
+        yield return C("Block@mode", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" mode=\"once\" /></Blocks>"), c => Assert.Equal("once", B0(c).Mode));
 
         // Transports
         yield return C("Transport@id", Cfg(Pt("")), c => Assert.Equal("tcp1", T0(c).Id));
@@ -154,7 +143,6 @@ public class FieldCoverageTests
         yield return C("Device@transport", Cfg(Pt("")), c => Assert.Equal("tcp1", D0(c).Transport));
         yield return C("Device@unitId", Cfg(Pt(""), top: "<Devices><Device id=\"d2\" transport=\"tcp1\" pointSet=\"ps1\" unitId=\"9\" /></Devices>"), c => Assert.Equal(9, c.Devices[1].UnitId));
         yield return C("Device@pointSet", Cfg(Pt("")), c => Assert.Equal("ps1", D0(c).PointSetId));
-        yield return C("Device@scanGroup", Cfg(Pt(""), top: "<Devices><Device id=\"d2\" unitId=\"2\" transport=\"tcp1\" pointSet=\"ps1\" scanGroup=\"fast\" /></Devices>"), c => Assert.Equal("fast", c.Devices[1].ScanGroup));
         yield return C("Device@swap", Cfg(Pt(""), top: "<Devices><Device id=\"d2\" unitId=\"2\" transport=\"tcp1\" pointSet=\"ps1\" swap=\"none\" /></Devices>"), c => Assert.Equal(SwapMode.None, c.Devices[1].Swap));
         yield return C("Device@requestTimeoutMs", Cfg(Pt(""), top: "<Devices><Device id=\"d2\" unitId=\"2\" transport=\"tcp1\" pointSet=\"ps1\" requestTimeoutMs=\"888\" /></Devices>"), c => Assert.Equal(888, c.Devices[1].RequestTimeoutMs));
         yield return C("Device/Retry@count", Cfg(Pt(""), top: "<Devices><Device id=\"d2\" unitId=\"2\" transport=\"tcp1\" pointSet=\"ps1\"><Retry count=\"5\" /></Device></Devices>"), c => Assert.Equal(5, c.Devices[1].RetryCount));
@@ -165,7 +153,6 @@ public class FieldCoverageTests
         yield return C("Defaults@area", Cfg(Pt(""), defaults: "<Defaults area=\"coil\" />"), c => Assert.Equal(RuntimeArea.Coil, P0(c).Area));
         yield return C("Defaults@dataType", Cfg(Pt(""), defaults: "<Defaults dataType=\"float32\" />"), c => Assert.Equal(RuntimeDataType.Float32, P0(c).DataType));
         yield return C("Defaults@swap", Cfg(Pt(""), defaults: "<Defaults swap=\"byte\" />"), c => Assert.Equal(SwapMode.Byte, P0(c).Swap));
-        yield return C("Defaults@scanGroup", Cfg(Pt(""), defaults: "<Defaults scanGroup=\"fast\" />"), c => Assert.Equal("fast", P0(c).ScanGroup));
         yield return C("Defaults@unitId", Cfg(Pt(""), defaults: "<Defaults unitId=\"7\" />"), c => Assert.Equal(7, P0(c).UnitIdOverride));
         yield return C("Defaults@access", Cfg(Pt(""), defaults: "<Defaults access=\"readwrite\" />"), c => Assert.True(P0(c).IsWritable));
 
@@ -174,7 +161,6 @@ public class FieldCoverageTests
         yield return C("Block@area", Cfg("", blocks: "<Blocks><Block id=\"b1\" area=\"coil\" start=\"0\" count=\"4\" /></Blocks>"), c => Assert.Equal(RuntimeArea.Coil, B0(c).Area));
         yield return C("Block@start", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"5\" count=\"4\" /></Blocks>"), c => Assert.Equal(5, B0(c).Start));
         yield return C("Block@count", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" /></Blocks>"), c => Assert.Equal(4, B0(c).Count));
-        yield return C("Block@scanGroup", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" scanGroup=\"fast\" /></Blocks>"), c => Assert.Equal("fast", B0(c).ScanGroup));
         yield return C("Block@unitId", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" unitId=\"6\" /></Blocks>"), c => Assert.Equal(6, B0(c).UnitId));
         yield return C("Block@swap", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" swap=\"byte\" /></Blocks>"), c => Assert.Equal(SwapMode.Byte, B0(c).Swap));
 
@@ -190,7 +176,6 @@ public class FieldCoverageTests
         yield return C("Point@bit", Cfg(Pt("bit=\"3\"")), c => Assert.Equal(3, P0(c).Bit));
         yield return C("Point@bitRange", Cfg(Pt("bitRange=\"4-7\"")), c => Assert.Equal("4-7", P0(c).BitRange));
         yield return C("Point@unit", Cfg(Pt("unit=\"C\"")), c => Assert.Equal("C", P0(c).Unit));
-        yield return C("Point@scanGroup", Cfg(Pt("scanGroup=\"fast\"")), c => Assert.Equal("fast", P0(c).ScanGroup));
         yield return C("Point@unitId", Cfg(Pt("unitId=\"12\"")), c => Assert.Equal(12, P0(c).UnitIdOverride));
         yield return C("Point@access=write", Cfg(Pt("access=\"write\"")), c => Assert.True(P0(c).IsWritable));
 
@@ -215,6 +200,8 @@ public class FieldCoverageTests
         // Point/String,Bcd,DateTime
         yield return C("String@encoding", Cfg(Pt("dataType=\"string\"", "<String encoding=\"utf8\" />")), c => Assert.Equal("utf8", P0(c).StringEncoding));
         yield return C("String@trimNull", Cfg(Pt("dataType=\"string\"", "<String trimNull=\"false\" />")), c => Assert.False(P0(c).StringTrimNull));
+        yield return C("String@padding", Cfg(Pt("dataType=\"string\"", "<String padding=\"0x20\" />")), c => Assert.Equal(0x20, P0(c).StringPadding));
+        yield return C("String@left", Cfg(Pt("dataType=\"string\"", "<String left=\"false\" />")), c => Assert.False(P0(c).StringPadLeft));
         yield return C("Bcd@digits", Cfg(Pt("dataType=\"bcd\"", "<Bcd digits=\"6\" />")), c => Assert.Equal(6, P0(c).BcdDigits));
         yield return C("DateTime@format", Cfg(Pt("dataType=\"datetime\"", "<DateTime format=\"unixSec\" />")), c => Assert.Equal("unixsec", P0(c).DateTimeFormat));
 
@@ -235,9 +222,24 @@ public class FieldCoverageTests
         yield return C("Write@permission", Cfg(Pt("access=\"write\"", "<Write permission=\"op\" />")), c => Assert.Equal("op", P0(c).Write!.Permission));
         yield return C("Write@verify", Cfg(Pt("access=\"write\"", "<Write verify=\"true\" />")), c => Assert.True(P0(c).Write!.Verify));
 
-        // Slices
+        // Slices（有效字长 = 片段长度之和：3 段共 3 字）
         yield return C("Slices/Slice@address+length", Cfg(Pt("", "<Slices><Slice address=\"10\" length=\"2\" /><Slice address=\"20\" length=\"1\" /></Slices>")),
             c => { Assert.Equal(10, P0(c).Slices![0].Address); Assert.Equal(2, P0(c).Slices![0].Length); Assert.Equal(20, P0(c).Slices![1].Address); });
+
+        // Bits（位映射：条目进模型，展开成子点位在 BitMapSlicesStringTests 断言）
+        yield return C("Bits/Bit@index@name@text", Cfg(Pt("", "<Bits><Bit index=\"0\" name=\"running\" text=\"运行\" /></Bits>")),
+            c => { var e = Assert.Single(P0(c).Bits!); Assert.Equal(0, e.Index); Assert.Equal("running", e.Name); Assert.Equal("运行", e.Text); });
+        yield return C("Bits/Field@from@to+Map", Cfg(Pt("", "<Bits><Field from=\"4\" to=\"7\" name=\"code\"><Map><Item key=\"1\">热</Item></Map></Field></Bits>")),
+            c => { var e = Assert.Single(P0(c).Bits!); Assert.Equal(4, e.From); Assert.Equal(7, e.To); Assert.Equal("热", e.Map["1"]); });
+
+        // Calculated/DependsOn（PointRef 已解析，成环判定见 BitMapSlicesStringTests.Cgv31_*）
+        // 2026-09-16 起计算点必须恰有 Expression 或 Script 之一（CGV-33），所以这条带上脚本
+        yield return C("Calculated/DependsOn/PointRef", Cfg(Pt(""), calc: "<Calculated><Point id=\"c1\"><Script>P('p')</Script><DependsOn><PointRef>p</PointRef></DependsOn></Point></Calculated>"),
+            c => Assert.Equal(new[] { "p" }, c.PointSets[0].Calculated[0].DependsOn.ToArray()));
+
+        // Calculated/Script（脚本型计算点，ADR D41）
+        yield return C("Calculated/Script@language+timeoutMs", Cfg("", calc: "<Calculated><Point id=\"c1\"><Script language=\"js\" timeoutMs=\"30\">P('p') * 2</Script></Point></Calculated>"),
+            c => { var calc = c.PointSets[0].Calculated[0]; Assert.Equal("P('p') * 2", calc.Script); Assert.Equal(30, calc.ScriptTimeoutMs); });
 
         // Calculated
         yield return C("Calculated/Expression", Cfg("", calc: "<Calculated><Point id=\"c1\"><Expression>P('p') + 1</Expression></Point></Calculated>"),
@@ -257,7 +259,7 @@ public class FieldCoverageTests
         // Global（不写 Global 段）
         yield return C("Global@nullText default", Cfg(Pt("")), c => Assert.Equal("--", G(c).NullText));
         yield return C("Global@swap default word", Cfg(Pt("")), c => Assert.Equal(SwapMode.Word, G(c).DefaultSwap));
-        yield return C("Global/Polling@rateMs default", Cfg(Pt("")), c => Assert.Equal(1000, G(c).DefaultRateMs));
+        yield return C("Global/Polling@defaultIntervalMs default", Cfg(Pt("")), c => Assert.Equal(1000, G(c).DefaultIntervalMs));
         yield return C("Global/Polling@requestTimeoutMs default", Cfg(Pt("")), c => Assert.Equal(1000, G(c).RequestTimeoutMs));
         yield return C("Global/Quality@onCommErrorValue default", Cfg(Pt("")), c => Assert.Equal("keepLast", G(c).OnCommErrorValue));
         yield return C("Global/Quality@onCommError default", Cfg(Pt("")), c => Assert.Equal("bad", G(c).OnCommError));
@@ -267,19 +269,18 @@ public class FieldCoverageTests
         yield return C("Global/Retry@backoff default", Cfg(Pt("")), c => Assert.Equal("exponential", G(c).RetryBackoff));
         yield return C("Global/Retry@escalateAfter default", Cfg(Pt("")), c => Assert.Equal(3, G(c).EscalateAfter));
         yield return C("Global/Retry@budgetMs default", Cfg(Pt("")), c => Assert.Equal(3000, G(c).BudgetMs));
-        yield return C("Global/Scheduler@maxRegistersPerRead default", Cfg(Pt("")), c => Assert.Equal(125, G(c).MaxRegistersPerRead));
-        yield return C("Global/Scheduler@maxBitsPerRead default", Cfg(Pt("")), c => Assert.Equal(2000, G(c).MaxBitsPerRead));
-        yield return C("Global/Scheduler@mergeGap default", Cfg(Pt("")), c => Assert.Equal(0, G(c).MergeGap));
-        yield return C("Global/Script@timeoutMs default", Cfg(Pt("")), c => Assert.Equal(50, G(c).ScriptTimeoutMs));
-        yield return C("Global/Script@onError default", Cfg(Pt("")), c => Assert.Equal("markBad", G(c).ScriptOnError));
+        yield return C("Global/Scheduler@groupLimitRegisters default", Cfg(Pt("")), c => Assert.Equal(125, G(c).GroupLimitRegisters));
+        yield return C("Global/Scheduler@groupLimitBits default", Cfg(Pt("")), c => Assert.Equal(2000, G(c).GroupLimitBits));
+        yield return C("Global/Scheduler@ignoreGap default", Cfg(Pt("")), c => Assert.Equal(0, G(c).IgnoreGap));
         yield return C("HostConfig@unsupportedPolicy default warn", Cfg(Pt("")), c => Assert.Equal("warn", c.UnsupportedPolicy));
         yield return C("Meta default empty", Cfg(Pt("")), c => { Assert.Null(c.Meta.ProjectName); Assert.Equal(0, c.Meta.Revision); Assert.Empty(c.Meta.Tags); });
         yield return C("Diagnostics@allowRawAccess default false", Cfg(Pt("")), c => Assert.False(G(c).AllowRawAccess));
 
-        // ScanGroup
-        yield return C("ScanGroup@mode default poll", Cfg(Pt("")), c => Assert.Equal("poll", S(c, 0).Mode));
-        yield return C("ScanGroup@rateMs default 1000", Cfg(Pt("")), c => Assert.Equal(1000, S(c, 0).RateMs));
-        yield return C("ScanGroup@jitterMs default 0", Cfg(Pt("")), c => Assert.Equal(0, S(c, 0).JitterMs));
+        // 间隔与模式缺省（未写 intervalMs → null，运行期取 Global/Polling@defaultIntervalMs）
+        yield return C("Point@intervalMs default null", Cfg(Pt("")), c => Assert.Null(P0(c).IntervalMs));
+        yield return C("Point@mode default auto", Cfg(Pt("")), c => Assert.Equal("auto", P0(c).Mode));
+        yield return C("Block@intervalMs default null", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" /></Blocks>"), c => Assert.Null(B0(c).IntervalMs));
+        yield return C("Block@mode default auto", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" /></Blocks>"), c => Assert.Equal("auto", B0(c).Mode));
 
         // Transport
         yield return C("Transport@variant default tcp", Cfg(Pt("")), c => Assert.Equal("tcp", T0(c).Variant));
@@ -302,7 +303,6 @@ public class FieldCoverageTests
         // Device
         yield return C("Device@enabled default true", Cfg(Pt("")), c => Assert.True(D0(c).Enabled));
         yield return C("Device@unitId default 1", Cfg(Pt("")), c => Assert.Equal(1, D0(c).UnitId));
-        yield return C("Device@scanGroup default normal", Cfg(Pt("")), c => Assert.Equal("normal", D0(c).ScanGroup));
         yield return C("Device/Retry@count default 2", Cfg(Pt("")), c => Assert.Equal(2, D0(c).RetryCount));
         yield return C("Device/Retry@intervalMs default 100", Cfg(Pt("")), c => Assert.Equal(100, D0(c).RetryIntervalMs));
         yield return C("Device/Pause default false", Cfg(Pt("")), c => Assert.False(D0(c).Paused));
@@ -311,7 +311,6 @@ public class FieldCoverageTests
         yield return C("Point@area default holding", Cfg(Pt("")), c => Assert.Equal(RuntimeArea.HoldingRegister, P0(c).Area));
         yield return C("Point@dataType default uint16", Cfg(Pt("")), c => Assert.Equal(RuntimeDataType.UInt16, P0(c).DataType));
         yield return C("Point@swap default word", Cfg(Pt("")), c => Assert.Equal(SwapMode.Word, P0(c).Swap));
-        yield return C("Point@scanGroup default normal", Cfg(Pt("")), c => Assert.Equal("normal", P0(c).ScanGroup));
         yield return C("Point@access default read", Cfg(Pt("")), c => Assert.False(P0(c).IsWritable));
         yield return C("Point@length default 0", Cfg(Pt("")), c => Assert.Equal(0, P0(c).Length));
         yield return C("Point@bit default null", Cfg(Pt("")), c => Assert.Null(P0(c).Bit));
@@ -353,13 +352,13 @@ public class FieldCoverageTests
         // Defaults → Point（Point 未写时取 Defaults）
         yield return C("Defaults.area → Point", Cfg(Pt(""), defaults: "<Defaults area=\"input\" />"), c => Assert.Equal(RuntimeArea.InputRegister, P0(c).Area));
         yield return C("Defaults.dataType → Point", Cfg(Pt(""), defaults: "<Defaults dataType=\"int32\" />"), c => Assert.Equal(RuntimeDataType.Int32, P0(c).DataType));
-        yield return C("Defaults.scanGroup → Point", Cfg(Pt(""), defaults: "<Defaults scanGroup=\"fast\" />"), c => Assert.Equal("fast", P0(c).ScanGroup));
         yield return C("Defaults.unitId → Point.UnitIdOverride", Cfg(Pt(""), defaults: "<Defaults unitId=\"7\" />"), c => Assert.Equal(7, P0(c).UnitIdOverride));
         yield return C("Defaults.access → Point", Cfg(Pt(""), defaults: "<Defaults access=\"readwrite\" />"), c => Assert.True(P0(c).IsWritable));
 
         // Point 覆盖 Defaults（就近优先）
         yield return C("Point.area overrides Defaults", Cfg(Pt("area=\"coil\""), defaults: "<Defaults area=\"input\" />"), c => Assert.Equal(RuntimeArea.Coil, P0(c).Area));
-        yield return C("Point.scanGroup overrides Defaults", Cfg(Pt("scanGroup=\"fast\""), defaults: "<Defaults scanGroup=\"normal\" />"), c => Assert.Equal("fast", P0(c).ScanGroup));
+        // 节奏只在点位/块上声明：PointSet/Defaults 不承载 intervalMs/mode（写了不生效的中间层必须不存在）
+        yield return C("Defaults 不带 intervalMs/mode", Cfg(Pt("intervalMs=\"300\""), defaults: "<Defaults dataType=\"int32\" />"), c => Assert.Equal(300, P0(c).IntervalMs));
 
         // Point.swap 覆盖 Defaults（链的点位侧；设备级/全局级兜底在 RuntimePoint 解析，见 ADR D38）
         yield return C("Point.swap overrides Defaults.swap", Cfg(Pt("swap=\"word_byte\""), defaults: "<Defaults swap=\"byte\" />"), c => Assert.Equal(SwapMode.WordByte, P0(c).Swap));
@@ -369,8 +368,12 @@ public class FieldCoverageTests
             c => Assert.Equal(RuntimeArea.Coil, BP0(c).Area));
         yield return C("Block.swap → block point", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" swap=\"byte\"><Point id=\"bp\" address=\"1\" /></Block></Blocks>"),
             c => Assert.Equal(SwapMode.Byte, BP0(c).Swap));
-        yield return C("Block.scanGroup → block point", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" scanGroup=\"fast\"><Point id=\"bp\" address=\"1\" /></Block></Blocks>"),
-            c => Assert.Equal("fast", BP0(c).ScanGroup));
+        yield return C("Block.intervalMs 不复制到块内点位（节奏由块统一决定）",
+            Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" intervalMs=\"500\"><Point id=\"bp\" address=\"1\" /></Block></Blocks>"),
+            c => Assert.Null(BP0(c).IntervalMs));
+        yield return C("Block.mode 不复制到块内点位（块内点位不单独排期）",
+            Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" mode=\"once\"><Point id=\"bp\" address=\"1\" /></Block></Blocks>"),
+            c => Assert.Equal("auto", BP0(c).Mode));
         yield return C("Block.unitId → block point", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" unitId=\"6\"><Point id=\"bp\" address=\"1\" /></Block></Blocks>"),
             c => Assert.Equal(6, BP0(c).UnitIdOverride));
         yield return C("Block point.swap overrides Block", Cfg("", blocks: "<Blocks><Block id=\"b1\" start=\"0\" count=\"4\" swap=\"byte\"><Point id=\"bp\" address=\"1\" swap=\"word_byte\" /></Block></Blocks>"),
@@ -378,9 +381,9 @@ public class FieldCoverageTests
 
         // 设备模板：模板属性垫入实例（未被实例覆盖时生效）
         yield return C("DeviceTemplate.unitId → Device", Cfg(Pt(""),
-            top: "<DeviceTemplates><Device id=\"dt\" unitId=\"11\" scanGroup=\"fast\" /></DeviceTemplates>"
+            top: "<DeviceTemplates><Device id=\"dt\" unitId=\"11\" /></DeviceTemplates>"
                 + "<Devices><Device id=\"d2\" template=\"dt\" transport=\"tcp1\" pointSet=\"ps1\" /></Devices>"),
-            c => { Assert.Equal(11, c.Devices[1].UnitId); Assert.Equal("fast", c.Devices[1].ScanGroup); });
+            c => Assert.Equal(11, c.Devices[1].UnitId));
         yield return C("Device.unitId overrides template", Cfg(Pt(""),
             top: "<DeviceTemplates><Device id=\"dt\" unitId=\"11\" /></DeviceTemplates>"
                 + "<Devices><Device id=\"d2\" template=\"dt\" unitId=\"3\" transport=\"tcp1\" pointSet=\"ps1\" /></Devices>"),

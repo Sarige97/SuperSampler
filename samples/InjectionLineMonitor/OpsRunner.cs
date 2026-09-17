@@ -43,7 +43,7 @@ internal sealed class OpsRunner
 
     public string Source => _scriptPath == null ? "内置默认序列" : _scriptPath;
 
-    /// <summary>宿主侧的动作统计（框架侧的写审计直方图在 EventJournal.WriteOutcomes）。</summary>
+    /// <summary>宿主侧的动作统计（框架侧的写审计直方图由 EventJournal 在汇总报告里打印）。</summary>
     public long WriteAttempts { get; private set; }
 
     public long PulseAttempts { get; private set; }

@@ -30,8 +30,6 @@ internal sealed class PointCatalog
 
     public IEnumerable<RuntimePoint> AllPoints() => _deviceIds.SelectMany(PointsOf);
 
-    public int CountOf(string deviceId) => PointsOf(deviceId).Count();
-
     /// <summary>块的 id 清单（用于打印解析摘要）。</summary>
     public IEnumerable<string> BlockIdsOf(string deviceId)
         => _registry.GetDevice(deviceId).Blocks.Select(b => b.Id + "(" + b.Area + "@" + b.Start + "+" + b.Count + ")");
@@ -99,7 +97,10 @@ internal sealed class PointCatalog
 
         return address + " " + p.DataType.ToString().ToLowerInvariant() + bits
                + " unit=" + p.UnitId.ToString(CultureInfo.InvariantCulture)
-               + " scan=" + p.ScanGroup
+               + " interval=" + (p.IntervalMs.HasValue
+                   ? p.IntervalMs.Value.ToString(CultureInfo.InvariantCulture) + "ms"
+                   : "auto")
+               + " mode=" + p.Mode
                + (p.IsWritable ? " RW" : " R")
                + (p.Enabled ? string.Empty : " [disabled]");
     }

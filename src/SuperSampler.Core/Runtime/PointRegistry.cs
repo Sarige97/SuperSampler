@@ -14,6 +14,25 @@ public static class PointKey
 }
 
 /// <summary>
+/// 阶段二闸门（docs/11 §二「核查完毕后才根据 XML 实例化」）：
+/// 运行时对象（注册表 / 调度器 / 引擎）只接受**已通过加载期全量校验**的配置。
+/// 校验未过时配置里的链路、点表、点位可能缺失，硬跑下去只会得到半成品运行时状态。
+/// </summary>
+internal static class ConfigGuard
+{
+    /// <summary>配置未通过加载期全量校验时抛 <see cref="InvalidOperationException"/>。</summary>
+    public static void RequireValidated(SamplerConfiguration config)
+    {
+        if (config.IsValidated) return;
+
+        throw new InvalidOperationException(
+            "配置未通过加载期全量校验（SamplerConfiguration.IsValidated=false）："
+            + "运行时对象只能在 SamplerConfigLoader.Load/LoadFromXml 全量校验零错误返回后构造，"
+            + "校验未过不得实例化引擎、注册表或调度器");
+    }
+}
+
+/// <summary>
 /// 解析完成的运行时点位：配置已继承、地址已换算、从站号已落实。
 /// 不可变；调度器、写管道、门面都只读它。
 /// </summary>
@@ -36,9 +55,30 @@ public sealed class RuntimePoint
 
     public IReadOnlyList<SliceConfig>? Slices { get; }
 
+    /// <summary>
+    /// 该点位在一次请求里的占用起点：连续点 = <see cref="Address"/>；&lt;Slices&gt; 点 = 最小片段地址。
+    /// 自动分组（Scheduler）按它排序与判断地址空洞。
+    /// </summary>
+    public int SpanStart { get; }
+
+    /// <summary>
+    /// 该点位在一次请求里的占用终点（开区间）：连续点 = Address + Length；&lt;Slices&gt; 点 = 最大片段末地址+长度。
+    /// 与 <see cref="SpanStart"/> 一起构成「一次请求必须覆盖到的范围」（片段之间的空洞也在内）。
+    /// </summary>
+    public int SpanEnd { get; }
+
+    /// <summary>位映射展开出的子点位所归属的整字点位 id；null = 本点位不是展开产物（docs/01 §4.1）。</summary>
+    public string? ParentPointId { get; }
+
     public bool IsWritable { get; }
     public string? Unit { get; }
-    public string ScanGroup { get; }
+
+    /// <summary>读取模式：auto（周期读）| ondemand（只手动触发）| once（Start 后读一次）。加载期已归一为小写。</summary>
+    public string Mode { get; }
+
+    /// <summary>声明的轮询间隔（毫秒）；null = 未写，调度器取全局默认（<see cref="GlobalOptions.DefaultIntervalMs"/>）。</summary>
+    public int? IntervalMs { get; }
+
     public int UnitId { get; }
     public string TransportId { get; }
 
@@ -48,6 +88,12 @@ public sealed class RuntimePoint
 
     public string StringEncoding { get; }
     public bool StringTrimNull { get; }
+
+    /// <summary>补齐字节（String@padding，默认 0x00；0x20 = 空格补齐）。</summary>
+    public int StringPadding { get; }
+
+    /// <summary>true = 字符串靠左、补齐在右（解码裁尾部）；false = 靠右、补齐在左。</summary>
+    public bool StringPadLeft { get; }
     public int BcdDigits { get; }
     public string DateTimeFormat { get; }
 
@@ -62,6 +108,21 @@ public sealed class RuntimePoint
 
     /// <summary>计算点表达式。</summary>
     public string? Expression { get; }
+
+    /// <summary>
+    /// 点位脚本正文（<c>Point/Script</c>，ADR D41）；非空时工程值由脚本产出（不再走 Scale）。
+    /// 解码路径喂 <c>raw</c>/<c>rawValue</c>，计算点路径只喂 <c>P()/T()</c>。
+    /// </summary>
+    public string? Script { get; }
+
+    /// <summary>脚本超时（毫秒）：点位覆盖值，未写时为 null（运行期用 <see cref="GlobalOptions.ScriptTimeoutMs"/>）。</summary>
+    public int? ScriptTimeoutMs { get; }
+
+    /// <summary>脚本失败策略：点位覆盖值，未写时为 null（运行期用 <see cref="GlobalOptions.ScriptOnError"/>）。</summary>
+    public string? ScriptOnError { get; }
+
+    /// <summary>是否带脚本（<c>Point/Script</c>）。</summary>
+    public bool HasScript => !string.IsNullOrEmpty(Script);
 
     public PointConfig Source { get; }
 
@@ -79,7 +140,8 @@ public sealed class RuntimePoint
         DataType = source.DataType;
         Bit = source.Bit;
         Unit = source.Unit;
-        ScanGroup = source.ScanGroup;
+        Mode = source.Mode;
+        IntervalMs = source.IntervalMs;
         Scale = source.Scale;
         Format = source.Format;
         Write = source.Write;
@@ -88,11 +150,17 @@ public sealed class RuntimePoint
         IsWritable = source.IsWritable;
         StringEncoding = source.StringEncoding;
         StringTrimNull = source.StringTrimNull;
+        StringPadding = source.StringPadding;
+        StringPadLeft = source.StringPadLeft;
         BcdDigits = source.BcdDigits;
         DateTimeFormat = source.DateTimeFormat;
         IsCalculated = source.IsCalculated;
         Expression = source.Expression;
+        Script = source.Script;
+        ScriptTimeoutMs = source.ScriptTimeoutMs;
+        ScriptOnError = source.ScriptOnError;
         Enabled = source.Enabled;
+        ParentPointId = source.ParentPointId;
 
         // bitRange 解析为起止位（含端点）；非法区间留空并按普通 16 位处理
         if (source.BitRange != null)
@@ -110,12 +178,71 @@ public sealed class RuntimePoint
 
         Length = SamplerConfigLoader.EffectiveLength(source);
 
+        // 一次请求必须覆盖的范围：连续点 = [Address, Address+Length)；Slices 点 = [最小片段地址, 最大片段末地址)
+        // ——片段之间的空洞也要读回来（读回后按片段拼值），所以跨度取片段端点的并集（docs/01 §4.2）。
+        if (source.Slices is { Count: > 0 } slices)
+        {
+            var start = int.MaxValue;
+            var end = int.MinValue;
+            foreach (var slice in slices)
+            {
+                var sliceStart = slice.Address;
+                var sliceEnd = slice.Address + (slice.Length < 1 ? 1 : slice.Length);
+                if (sliceStart < start) start = sliceStart;
+                if (sliceEnd > end) end = sliceEnd;
+            }
+
+            SpanStart = start;
+            SpanEnd = end;
+        }
+        else
+        {
+            SpanStart = Address;
+            SpanEnd = Address + Length;
+        }
+
         // swap 兜底链（ADR D38）：Point@swap > PointSet/Defaults@swap > Block@swap（块内） > Device@swap > Global@swap。
         // 只有「未显式声明」的点位才取设备级值——同一 PointSet 可被多设备共用，各自 swap 不同，
         // 所以设备级兜底只能在运行期（拿到 device 的这里）解析，绝不能在加载器里烧进共享的 PointConfig。
         Swap = source.HasSwapDeclared ? source.Swap : device.Swap;
         UnitId = source.UnitIdOverride ?? device.UnitId;
         TransportId = device.Transport;
+    }
+
+    /// <summary>
+    /// 从一次请求读回的窗口寄存器里取出本点位要解码的那串寄存器：
+    /// 连续点 = 窗口内 [Address, Address+Length) 的一段；&lt;Slices&gt; 点 = 按片段顺序拼接（片段之间的空洞丢弃）。
+    /// 返回 false = 窗口没覆盖住本点位（短帧/窗口切分错误）——调用方置 Bad 质量，绝不抛。
+    /// </summary>
+    public bool TryExtract(ushort[] window, int windowStart, out ushort[] registers)
+    {
+        registers = Array.Empty<ushort>();
+        if (window == null) return false;
+
+        if (Slices is not { Count: > 0 } slices)
+        {
+            var offset = Address - windowStart;
+            if (offset < 0 || offset + Length > window.Length) return false;
+
+            registers = new ushort[Length];
+            Array.Copy(window, offset, registers, 0, Length);
+            return true;
+        }
+
+        var result = new ushort[Length];
+        var written = 0;
+        foreach (var slice in slices)
+        {
+            var length = slice.Length < 1 ? 1 : slice.Length;
+            var offset = slice.Address - windowStart;
+            if (offset < 0 || offset + length > window.Length || written + length > result.Length) return false;
+
+            Array.Copy(window, offset, result, written, length);
+            written += length;
+        }
+
+        registers = result;
+        return written == result.Length;
     }
 }
 
@@ -127,7 +254,13 @@ public sealed class RuntimeBlock
     public RuntimeArea Area { get; }
     public int Start { get; }
     public int Count { get; }
-    public string ScanGroup { get; }
+
+    /// <summary>读取模式：auto（周期读）| ondemand（只手动触发）| once（Start 后读一次）。加载期已归一为小写。</summary>
+    public string Mode { get; }
+
+    /// <summary>声明的轮询间隔（毫秒）；null = 未写，调度器取全局默认（<see cref="GlobalOptions.DefaultIntervalMs"/>）。</summary>
+    public int? IntervalMs { get; }
+
     public int UnitId { get; }
     public SwapMode Swap { get; }
     public IReadOnlyList<RuntimePoint> Points { get; }
@@ -142,7 +275,8 @@ public sealed class RuntimeBlock
         Area = source.Area;
         Start = source.Start;
         Count = source.Count;
-        ScanGroup = source.ScanGroup;
+        Mode = source.Mode;
+        IntervalMs = source.IntervalMs;
         UnitId = source.UnitId ?? device.UnitId;
         Swap = source.Swap;
         Enabled = source.Enabled;
@@ -150,7 +284,7 @@ public sealed class RuntimeBlock
     }
 }
 
-/// <summary>运行时设备：绑定了链路、从站号、扫描组与全部点位。</summary>
+/// <summary>运行时设备：绑定了链路、从站号与全部点位。</summary>
 public sealed class RuntimeDevice
 {
     public DeviceConfig Config { get; }
@@ -210,6 +344,12 @@ public sealed class PointRegistry
 
     public PointRegistry(SamplerConfiguration config)
     {
+        if (config == null) throw new ArgumentNullException(nameof(config));
+
+        // 阶段二闸门：只有加载期全量校验零错误的配置才允许实例化运行时索引。
+        // 半成品配置（缺链路/点表/点位）在这里会被拦下，而不是运行到一半抛 KeyNotFound。
+        ConfigGuard.RequireValidated(config);
+
         var deviceMap = config.Devices.ToDictionary(d => d.Id, StringComparer.Ordinal);
         var pointSetMap = config.PointSets.ToDictionary(p => p.Id, StringComparer.Ordinal);
         var transportMap = config.Transports.ToDictionary(t => t.Id, StringComparer.Ordinal);
@@ -261,10 +401,12 @@ public sealed class PointRegistry
 /// <summary>
 /// 实时值缓存：(deviceId, pointId) → {值, 质量, 时间戳}。线程安全。
 /// 门面 GetValue/GetValueDetail 的唯一数据来源；通信失败时按全局策略保留旧值或置空。
+/// 另存「上次成功采集时刻」（ADR D40 的 <c>GetValueAge</c> 数据来源）：通讯失败不刷新它。
 /// </summary>
 public sealed class ValueCache
 {
     private readonly ConcurrentDictionary<string, PointValue> _values = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _acquiredAt = new(StringComparer.Ordinal);
 
     /// <summary>
     /// 取实时值。key 不存在时返回 Bad（不是 default）——
@@ -278,4 +420,14 @@ public sealed class ValueCache
     public PointValue Get(string deviceId, string pointId) => Get(PointKey.Of(deviceId, pointId));
 
     public void Set(string key, PointValue value) => _values[key] = value;
+
+    /// <summary>
+    /// 记一次**成功采集**（请求成功、该点完成解码落缓存；解码降级为 Uncertain/Bad 也算）。
+    /// 通讯失败置坏不调用——它不是「成功采集」，<c>GetValueAge</c> 必须能区分两者。
+    /// </summary>
+    public void MarkAcquired(string key, DateTimeOffset at) => _acquiredAt[key] = at;
+
+    /// <summary>距上次成功采集的时长；从未成功采集返回 null（由宿主决定陈旧阈值）。</summary>
+    public TimeSpan? GetAge(string key, DateTimeOffset now)
+        => _acquiredAt.TryGetValue(key, out var at) ? now - at : (TimeSpan?)null;
 }

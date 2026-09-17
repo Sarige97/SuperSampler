@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -91,9 +91,6 @@ public class RuntimeEventTests
 
     private const string CFG = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>

@@ -49,6 +49,15 @@ public sealed partial class ModbusMaster
             var words = new ushort[count];
             if (area is DataArea.Coil or DataArea.DiscreteInput)
             {
+                // findings D106：位区应答只校验了「Pdu 长度 ≥ 2+byteCount」，没校验 byteCount 够不够
+                // 放下 count 位 → 短包会在下面的循环里抛 IndexOutOfRange 裸异常逃出驱动边界（违反 D24）。
+                var requiredBytes = (count + 7) / 8;
+                if (byteCount < requiredBytes)
+                {
+                    reply.Fail(ModbusFailureKind.Protocol, 0, "应答位数据不足");
+                    return;
+                }
+
                 for (var i = 0; i < count; i++)
                 {
                     var bit = (reply.Pdu[2 + (i / 8)] >> (i % 8)) & 1;

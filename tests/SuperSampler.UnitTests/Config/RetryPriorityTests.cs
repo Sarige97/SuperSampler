@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Xml.Linq;
 using SuperSampler.Core.Config;
@@ -17,7 +17,6 @@ public class RetryPriorityTests
             XDocument.Parse(
                 "<HostConfig schemaVersion=\"3.0\">"
                 + global
-                + "<ScanGroups><ScanGroup id=\"normal\" /></ScanGroups>"
                 + "<Transports><Transport id=\"tcp1\" host=\"x\">" + transport + "</Transport></Transports>"
                 + "<PointSets><PointSet id=\"ps1\"><Points><Point id=\"p\" address=\"0\" /></Points></PointSet></PointSets>"
                 + "<Devices><Device id=\"d1\" transport=\"tcp1\" pointSet=\"ps1\">" + device + "</Device></Devices>"
@@ -76,7 +75,6 @@ public class RetryPriorityTests
             XDocument.Parse(
                 "<HostConfig schemaVersion=\"3.0\">"
                 + "<Global><Retry count=\"7\" intervalMs=\"700\" /></Global>"
-                + "<ScanGroups><ScanGroup id=\"normal\" /></ScanGroups>"
                 + "<Transports><Transport id=\"tcp1\" host=\"x\" /></Transports>"
                 + "<DeviceTemplates><Device id=\"tpl\" transport=\"tcp1\" pointSet=\"ps1\"><Retry count=\"4\" intervalMs=\"400\" /></Device></DeviceTemplates>"
                 + "<PointSets><PointSet id=\"ps1\"><Points><Point id=\"p\" address=\"0\" /></Points></PointSet></PointSets>"

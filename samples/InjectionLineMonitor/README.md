@@ -24,7 +24,7 @@
 | `i18n/ui_zh_CN.i18n`、`i18n/ui_en_US.i18n` | 文案与单位（`line.xml` 用 `${KEY}` 引用） |
 | `Program.cs` | 启动/主循环/优雅退出 |
 | `HostOptions.cs` | 命令行解析 |
-| `LineSummary.cs` | 配置解析摘要（设备/点位/扫描组/Warnings） |
+| `LineSummary.cs` | 配置解析摘要（设备/点位/块/间隔与模式/Warnings） |
 | `EventJournal.cs` | 事件订阅、计数、CSV 落盘、质量跃迁记录 |
 | `OpsRunner.cs` | 操作脚本解析与执行（write/pulse/ack/show/note） |
 | `Dashboard.cs` | 每 N 秒一屏关键点位表（值+质量+坏值原因+数据年龄） |
@@ -73,7 +73,7 @@ cd D:/IT/SuperModbus/SuperSampler/samples/InjectionLineMonitor
 
 ## 4. 控制台输出与落盘文件
 
-**控制台**：启动横幅 → 配置解析摘要（设备/点位/扫描组/Warnings）→ 每 `--every` 秒一屏关键点位表
+**控制台**：启动横幅 → 配置解析摘要（设备/点位/块/间隔与模式/Warnings）→ 每 `--every` 秒一屏关键点位表
 （`!!` = 质量非 Good，`~` = 质量 Good 但超过 `staleAfterMs` 未刷新）→ 操作脚本行/报警三态/写审计/错误行
 → 退出汇总（事件计数、写四态直方图、质量分布、质量跃迁、报警流水、进程资源）。
 
@@ -147,7 +147,7 @@ note  <文本>                     # 日志分隔说明
 ### 8.2 必须宿主自己补的（框架有意不做，或门面没给）
 
 1. **点位元数据没有门面**：门面只有 `GetValue/GetValueDetail/SetValueAsync/AcknowledgeAlarmAsync`。
-   「枚举设备下所有点、看类型/区/地址/扫描组/单位/报警、按点名反查设备」全都得直接引用
+   「枚举设备下所有点、看类型/区/地址/间隔与模式/单位/报警、按点名反查设备」全都得直接引用
    `SuperSampler.Core.Runtime.PointRegistry`、`SamplerConfiguration` 这些 Core 内部类型（本样例的 `PointCatalog`）。
    建议加一个只读元数据接口（如 `IPointCatalog`），否则每个宿主都会自己拼一套。
 2. **没有「设备/链路在线」状态**：断线时质量是**逐窗口**变 Bad 的，串行重试下滞后明显——
@@ -166,7 +166,7 @@ note  <文本>                     # 日志分隔说明
    本样例的 `Dashboard` 自己按时间戳算，并给 Good 但过期的点标 `~`。
 7. **没有「格式化任意 PointValue」的公开 API**：`WriteResult.Readback` 是工程值对象，
    宿主想显示成和 `GetValue` 一样的字符串只能自己拼（本样例打印 `<值> <单位>[质量]`）。
-   顺带一个坑：**不能用 `GetValue` 显示回读值**——它读的是轮询缓存，慢扫描组上可能是几秒前的旧值
+   顺带一个坑：**不能用 `GetValue` 显示回读值**——它读的是轮询缓存，长间隔（`intervalMs` 大）的点上可能是几秒前的旧值
    （本样例第一版就把写入 235 显示成缓存的 220.0），必须用 `Readback` 本身。
 8. **计算点不发事件**：计算点只在 `GetValue/GetValueDetail` 被调用时求值并回写缓存，不进轮询、不发
    `PointValueChangedEvent`（实测 `values.csv` 里没有 `im01.moldTempDev` / `env01.plantLoad` 的行）。

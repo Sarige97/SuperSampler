@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using SuperSampler.Abstractions.Values;
 using SuperSampler.Core.Runtime;
@@ -6,7 +6,7 @@ using Xunit;
 
 namespace SuperSampler.UnitTests.Runtime;
 
-/// <summary>计算点表达式求值器与脚本执行器测试。</summary>
+/// <summary>计算点表达式求值器测试。</summary>
 public class ExpressionEvaluatorTests
 {
     private static readonly Func<string, PointValue?> NoPoints = _ => null;
@@ -139,7 +139,10 @@ public class ExpressionEvaluatorTests
     }
 }
 
-/// <summary>脚本执行器（Jint ES5.1）测试：脚本求值、参数/点位注入、超时兜底。</summary>
+/// <summary>
+/// 脚本执行器（Jint ES5.1）测试：求值、绑定注入（args/raw/rawValue/P/T）、超时与异常不抛。
+/// 失败一律以 <see cref="ScriptResult"/> 表达（Succeeded=false），绝不向调用方抛。
+/// </summary>
 public class ScriptEvaluatorTests
 {
     private static PointValue? Resolve(string id)
@@ -148,57 +151,139 @@ public class ScriptEvaluatorTests
     private static ScriptEvaluator New()
         => new(Resolve, _ => "unit-C");
 
-    private static object? Run(string script, IReadOnlyList<object?>? args = null, ushort[]? raw = null,
-        int timeoutMs = 1000)
-        => New().Execute(script, args ?? Array.Empty<object?>(), raw, "dev1", "p1", timeoutMs, 64);
+    private static ScriptResult Run(string script, IReadOnlyList<object?>? args = null, ushort[]? raw = null,
+        int timeoutMs = 1000, object? rawValue = null)
+        => New().Execute(script, args ?? Array.Empty<object?>(), raw, "dev1", "p1", timeoutMs, 64, rawValue);
 
     [Fact]
     public void Script_returns_last_expression_value()
     {
         var result = Run("var x = 40; x + 2");
-        Assert.Equal(42.0, (double)result!);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(42.0, (double)result.Value!);
     }
 
     [Fact]
     public void Script_uses_args_and_raw()
     {
         var result = Run("args[0] + args[1] + raw.length", new object?[] { 1, 2 }, new ushort[] { 9, 9 });
+
         // 1 + 2 + 2 = 5
-        Assert.Equal(5.0, (double)result!);
+        Assert.True(result.Succeeded);
+        Assert.Equal(5.0, (double)result.Value!);
+    }
+
+    [Fact]
+    public void Script_receives_raw_value_and_can_branch_on_it()
+    {
+        // 脚本解码的核心语义：拿缩放前的原始数值做分支/查表，返回值即工程值
+        var result = Run("rawValue < 0 ? 0 : rawValue * 0.5", raw: new ushort[] { 0x000A }, rawValue: 10);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(5.0, (double)result.Value!);
+    }
+
+    [Fact]
+    public void Script_can_return_string_and_bool()
+    {
+        Assert.Equal("RUN", Run("'RUN'").Value as string);
+        Assert.Equal(true, Run("1 === 1").Value);
     }
 
     [Fact]
     public void Script_P_function_resolves_point()
     {
         var result = Run("P('dev1/p1') * 2");
-        Assert.Equal(15.0, (double)result!);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(15.0, (double)result.Value!);
     }
 
     [Fact]
     public void Script_T_function_resolves_i18n()
     {
-        var result = Run("T('unit')");
-        Assert.Equal("unit-C", result as string);
+        Assert.Equal("unit-C", Run("T('unit')").Value as string);
     }
 
     [Fact]
-    public void Infinite_loop_times_out_and_returns_null()
+    public void Infinite_loop_times_out_and_reports_failure()
     {
         var result = Run("while (true) { }", timeoutMs: 50);
-        Assert.Null(result);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.TimedOut);
+        Assert.Null(result.Value);
     }
 
     [Fact]
-    public void Script_exception_returns_null()
+    public void Script_exception_is_returned_as_failure_not_thrown()
     {
         var result = Run("undefinedVar.notAMethod()");
-        Assert.Null(result);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.TimedOut);
+        Assert.NotNull(result.Failure);
+    }
+
+    [Fact]
+    public void Es51_syntax_limit_arrow_function_fails_as_script_error()
+    {
+        // ES5.1 没有箭头函数：写了解析就失败——按失败返回，不抛、不崩
+        var result = Run("[1,2,3].map(function (x) { return x * 2; })[2]");
+
+        Assert.True(result.Succeeded);            // 函数表达式是 ES5，合法
+        Assert.Equal(6.0, (double)result.Value!);
+
+        var arrow = Run("var f = function (x) { return x; }; f(1)");
+        Assert.True(arrow.Succeeded);
+
+        // 真箭头函数（ES6）：Jint 2.x 语法解析失败 → 失败结果（上层按 onError 处理）
+        var es6 = Run("var f = (x) => x * 2; f(1)");
+        Assert.False(es6.Succeeded);
+        Assert.False(es6.TimedOut);
     }
 
     [Fact]
     public void Script_closures_and_strings_work_es5()
     {
         var result = Run("var s = 'a,b,c'.split(','); s.length");
-        Assert.Equal(3.0, (double)result!);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(3.0, (double)result.Value!);
+    }
+
+    [Fact]
+    public void Script_body_may_be_an_expression_or_a_method_body_with_return()
+    {
+        // 两种写法都是 ES5、都必须能用：表达式（最后一个表达式的值）
+        Assert.Equal(42.0, (double)Run("var x = 40; x + 2").Value!);
+
+        // 方法体（顶层 return 不是合法程序，引擎自动按函数体包裹）
+        Assert.Equal(42.0, (double)Run("return 41 + 1;").Value!);
+        Assert.Equal("b", Run("if (rawValue > 100) { return 'a'; } return 'b';", rawValue: 5).Value as string);
+    }
+
+    [Fact]
+    public void Null_return_is_success_with_null_value()
+    {
+        // 脚本主动返回 null：执行成功、值为 null——"要不要判坏"由上层按 onError 策略决定
+        var result = Run("var x = null; x");
+
+        Assert.True(result.Succeeded);
+        Assert.Null(result.Value);
+    }
+
+    [Fact]
+    public void Timeout_is_capped_by_the_configured_interval()
+    {
+        // 超时保护必须有界：1e9 次循环的脚本不能在 50ms 里跑完，必须被切断
+        var started = DateTime.UtcNow;
+        var result = Run("var s = 0; for (var i = 0; i < 1000000000; i++) { s = s + i; }", timeoutMs: 50);
+        var elapsed = DateTime.UtcNow - started;
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.TimedOut);
+        Assert.True(elapsed.TotalSeconds < 10, "脚本超时必须在秒级返回，实际 " + elapsed.TotalSeconds + "s");
     }
 }

@@ -47,7 +47,6 @@ public class I18nLanguageSelectionTests
                     <File lang="zh_CN" path="zh.i18n" />
                     <File lang="en_US" path="en.i18n" />
                   </Files></I18n>
-                  <ScanGroups><ScanGroup id="normal" /></ScanGroups>
                   <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
                   <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
                 """ + Points + "</SamplerConfig>";
@@ -76,7 +75,6 @@ public class I18nLanguageSelectionTests
                     <File lang="zh_CN" path="missing_zh.i18n" />
                     <File lang="en_US" path="en.i18n" />
                   </Files></I18n>
-                  <ScanGroups><ScanGroup id="normal" /></ScanGroups>
                   <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
                   <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
                 """ + Points + "</SamplerConfig>";
@@ -105,7 +103,6 @@ public class I18nLanguageSelectionTests
                     <File lang="zh_CN" path="a.i18n" />
                     <File lang="en_US" path="b.i18n" />
                   </Files></I18n>
-                  <ScanGroups><ScanGroup id="normal" /></ScanGroups>
                   <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
                   <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
                 """ + Points + "</SamplerConfig>";

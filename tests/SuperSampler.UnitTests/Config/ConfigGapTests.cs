@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -44,7 +44,6 @@ public class ConfigGapTests
 
     const string GCG1_PLC_AREAS = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -75,7 +74,6 @@ public class ConfigGapTests
 
     const string GCG2_TEMPLATE_RETAIN = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointTemplates>
@@ -109,7 +107,6 @@ public class ConfigGapTests
 
     const string GCG3_DUP_SLAVE = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices>
             <Device id="d1" transport="tcp1" pointSet="ps1" unitId="1" />
@@ -123,7 +120,6 @@ public class ConfigGapTests
 
     const string GCG3_DUP_SLAVE_DISABLED = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices>
             <Device id="d1" transport="tcp1" pointSet="ps1" unitId="1" />
@@ -155,7 +151,6 @@ public class ConfigGapTests
 
     const string GCG4_OVERRIDE_AREA = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -173,7 +168,6 @@ public class ConfigGapTests
 
     const string GCG4_SWAP_OK = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -202,11 +196,12 @@ public class ConfigGapTests
         {
             var cfg = Load(GCG5_I18N_DEFAULTS);
             var point = cfg.PointSets[0].Points[0];
-            // ${KEY} 在加载期代入；Defaults 的 dataType/scanGroup 链式继承
+            // ${KEY} 在加载期代入；Defaults 的 dataType 链式继承（节奏不在 Defaults 里，见 CGV-25）
             Assert.Equal("主温度", point.Name);
             Assert.Equal("℃", point.Unit);
             Assert.Equal(RuntimeDataType.Float32, point.DataType);
-            Assert.Equal("fast", point.ScanGroup);
+            Assert.Equal(500, point.IntervalMs);   // 间隔由点位自己声明
+            Assert.Equal("auto", point.Mode);
         }
         finally
         {
@@ -219,14 +214,13 @@ public class ConfigGapTests
           <I18n>
             <Files><File path="test_gcg5.i18n" /></Files>
           </I18n>
-          <ScanGroups><ScanGroup id="fast" rateMs="500" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
             <PointSet id="ps1">
-              <Defaults scanGroup="fast" dataType="float32" />
+              <Defaults dataType="float32" />
               <Points>
-                <Point id="p1" address="0" name="${PT_NAME}" unit="${UNIT_C}" />
+                <Point id="p1" address="0" name="${PT_NAME}" unit="${UNIT_C}" intervalMs="500" />
               </Points>
             </PointSet>
           </PointSets>
@@ -243,7 +237,6 @@ public class ConfigGapTests
 
     private const string POINT_TEMPLATE = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets><PointSet id="ps1"><Points>{POINT}</Points></PointSet></PointSets>
@@ -269,12 +262,22 @@ public class ConfigGapTests
     [InlineData("plc4", 4)]     // 年/月/日/时
     [InlineData("unixsec", 2)]
     [InlineData("unixms", 4)]   // 毫秒必超 32 位，故 4 字（64 位）
-    [InlineData("custom", 6)]   // 未知格式按 DecodeDateTime 的 default（plc6）兜底
     public void Gcg6b_datetime_word_length_follows_format(string format, int expectedWords)
     {
         var point = Runtime("<Point id=\"p\" address=\"0\" dataType=\"datetime\"><DateTime format=\"" + format + "\" /></Point>");
 
         Assert.Equal(expectedWords, point.Length);
+    }
+
+    [Fact]
+    public void Gcg6b2_unknown_datetime_format_is_rejected_at_load()
+    {
+        // CGV-37（findings D69 家族）：未知 DateTime@format 此前**静默按 plc6 解**——
+        // 4 字的 unixsec 设备被当成 6 字读，量纲完全错。现在加载期直接报错。
+        var ex = Assert.Throws<ConfigValidationException>(() => Load(POINT_TEMPLATE.Replace("{POINT}",
+            "<Point id=\"p\" address=\"0\" dataType=\"datetime\"><DateTime format=\"custom\" /></Point>")));
+
+        Assert.Contains("format=\"custom\" 非法", string.Join(" | ", ex.Errors));
     }
 
     [Fact]
@@ -314,7 +317,6 @@ public class ConfigGapTests
     {
         var cfg = Load("""
             <SamplerConfig schemaVersion="3.0">
-              <ScanGroups><ScanGroup id="normal" /></ScanGroups>
               <Transports><Transport id="tcp1" host="x" /></Transports>
               <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
               <PointSets><PointSet id="ps1"><Defaults swap="badc" />
@@ -334,7 +336,6 @@ public class ConfigGapTests
         var cfg = Load("""
             <SamplerConfig schemaVersion="3.0">
               <Global swap="dcba" nullText="N/A" />
-              <ScanGroups><ScanGroup id="normal" /></ScanGroups>
               <Transports><Transport id="tcp1" host="x" /></Transports>
               <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
               <PointSets><PointSet id="ps1"><Points><Point id="p" address="0" /></Points></PointSet></PointSets>

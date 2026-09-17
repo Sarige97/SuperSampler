@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -94,8 +94,7 @@ public class IntegrationTcpTests
 
     private const string XML = """
         <SamplerConfig schemaVersion="3.0">
-          <Global><Retry count="0" intervalMs="10" /><Polling rateMs="300" requestTimeoutMs="800" /></Global>
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
+          <Global><Retry count="0" intervalMs="10" /><Polling defaultIntervalMs="300" requestTimeoutMs="800" /></Global>
           <Transports><Transport id="tcp1" host="127.0.0.1" port="1502" /></Transports>
           <Devices>{0}</Devices>
           <PointSets><PointSet id="ps1"><Defaults swap="none" />{1}</PointSet></PointSets>
@@ -266,8 +265,7 @@ public class IntegrationTcpTests
         RequireSim();
         var xml = """
             <SamplerConfig schemaVersion="3.0">
-              <Global><Retry count="0" /><Polling rateMs="300" requestTimeoutMs="800" /></Global>
-              <ScanGroups><ScanGroup id="normal" /></ScanGroups>
+              <Global><Retry count="0" /><Polling defaultIntervalMs="300" requestTimeoutMs="800" /></Global>
               <Transports><Transport id="rtu1" host="127.0.0.1" port="1503" variant="rtuOverTcp" /></Transports>
               <Devices>
                 <Device id="s10" transport="rtu1" unitId="10" pointSet="ps1" />
@@ -430,6 +428,43 @@ public class IntegrationTcpTests
                 await Task.Delay(50);
             }
             Assert.Fail("unit99 不应答，点却一直 Good");
+        }
+        finally
+        {
+            engine.Dispose();
+        }
+    }
+
+    // ───────────── IT-11：点位脚本解码（真链路，ADR D41） ─────────────
+
+    [SkippableFact]
+    public async Task Script_points_decode_real_frames_into_engineering_values()
+    {
+        RequireSim();
+
+        // TYPEDEMO unit1 区段 A 基线（modbus_tcp_sim.py）：holding[300]=123、[301]=130、[302]=137
+        var points = string.Join("\n",
+            """<Point id="s.scale" address="300" dataType="uint16"><Script>rawValue * 2 + 1</Script></Point>""",
+            """<Point id="s.state" address="301" dataType="uint16"><Script timeoutMs="50">if (rawValue &gt; 100) { return 'HIGH'; } return 'LOW';</Script></Point>""",
+            """<Point id="s.pair" address="300" dataType="uint32" length="2"><Script>raw[0] + raw[1]</Script></Point>""");
+
+        using var engine = EngineUnit(1, points);
+        engine.Start();
+        try
+        {
+            var m = (IDeviceManager)engine;
+
+            // ① 表达式型：123 * 2 + 1
+            Assert.Equal(247.0, Get<double>(await WaitGood(m, "d1", "s.scale")));
+
+            // ② 方法体型（含 return）走分支 → 字符串工程值
+            Assert.Equal("HIGH", Get<string>(await WaitGood(m, "d1", "s.state")));
+
+            // ③ raw 是声明字长的原始寄存器数组：123 + 130
+            Assert.Equal(253.0, Get<double>(await WaitGood(m, "d1", "s.pair")));
+
+            // 脚本点照常参与缓存与门面格式化（脚本产物即工程值）
+            Assert.Equal("247", m.GetValue("d1", "s.scale"));
         }
         finally
         {

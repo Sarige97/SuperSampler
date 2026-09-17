@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -30,10 +30,9 @@ public sealed class ComplexStubAcquisitionTests
     private const string GlobalFast = """
         <Global>
           <Retry count="0" intervalMs="10" />
-          <Polling rateMs="200" requestTimeoutMs="3000" />
+          <Polling defaultIntervalMs="200" requestTimeoutMs="3000" />
           <Quality onCommError="bad" onCommErrorValue="null" />
         </Global>
-        <ScanGroups><ScanGroup id="normal" mode="poll" rateMs="200" /></ScanGroups>
         """;
 
     // ─────────────────────── C1-1：4 口 25 站、四区可读 ───────────────────────
@@ -151,8 +150,8 @@ public sealed class ComplexStubAcquisitionTests
             ComplexStubFixture.Point("holding.str", 40, "string", "area=\"holding\" length=\"26\""),
             ComplexStubFixture.Point("holding.empty", 66, "string", "area=\"holding\" length=\"10\""),
             // bcd(8)/datetime(plc6) 均跨 2/6 个寄存器，但 CGV-8 禁止给这两类写 length
-            // （框架现状见 C1_MultiWordBcdAndDateTime_* 与 findings F4）：只能靠 Slices 手动指定连续片段，
-            // 且 Slices 点位只在 TriggerRead 路径生效（ReadWindow 明确跳过 Slices 点位）。
+            // （框架现状见 C1_MultiWordBcdAndDateTime_* 与 findings F4）：只能靠 Slices 手动指定连续片段。
+            // 2026-09-16 第六步后 Slices 点位已并入轮询路径，这里仍走 TriggerRead 是「按需读」的独立覆盖。
             ComplexStubFixture.Point("holding.bcd", 76, "bcd", "area=\"holding\" length=\"2\"",
                 "<Bcd digits=\"8\" /><Slices><Slice address=\"76\" length=\"2\" /></Slices>"),
             ComplexStubFixture.Point("holding.dt", 78, "datetime", "area=\"holding\" length=\"6\"",
@@ -211,7 +210,7 @@ public sealed class ComplexStubAcquisitionTests
             // 真正的空串编码/解码覆盖放在 C2 的字符串写回读里。
             Assert.Equal("''", F.GetAs<string>(await ComplexStubFixture.WaitGoodAsync(m, "wo", "holding.empty")));
 
-            // BCD(8) / datetime(plc6)：多寄存器，走 TriggerRead（Slices 点位只在按需路径生效）
+            // BCD(8) / datetime(plc6)：多寄存器，这里走 TriggerRead 覆盖按需路径（轮询路径见 C6 用例）
             var debug = (IModbusDebugTool)engine;
             var bcd = await debug.TriggerReadAsync("wo", "holding.bcd");
             Assert.Equal(12345678L, F.GetAs<long>(bcd));
@@ -354,10 +353,10 @@ public sealed class ComplexStubAcquisitionTests
         }
     }
 
-    // ─────────────────────── C1-5：散点合并（mergeGap / maxRegistersPerRead） ───────────────────────
+    // ─────────────────────── C1-5：散点自动分组（ignoreGap / groupLimitRegisters） ───────────────────────
 
     [SkippableFact]
-    public async Task C1_ScatterMerge_HonoursMergeGapAndMaxRegistersPerRead()
+    public async Task C1_ScatterMerge_HonoursIgnoreGapAndGroupLimit()
     {
         _stub.RequireStub();
         _stub.RequireSimLog();
@@ -371,14 +370,14 @@ public sealed class ComplexStubAcquisitionTests
             ComplexStubFixture.Point("h.u16", 7, "uint16"));
         var tail = ComplexStubFixture.Point("h.tail", 10, "float64");
 
-        // ① mergeGap=4：2 字空洞被吸收 → 每周期 1 次请求（14 字一窗）
-        Assert.Equal(1, (await CountRequestsPerCycle(points, mergeGap: 4, maxRegistersPerRead: 125, extraPoints: tail)).PerCycle);
+        // ① ignoreGap=4：2 字空洞被吸收 → 每周期 1 次请求（14 字一窗）
+        Assert.Equal(1, (await CountRequestsPerCycle(points, ignoreGap: 4, groupLimitRegisters: 125, extraPoints: tail)).PerCycle);
 
-        // ② mergeGap=0：空洞不吸收 → 每周期 2 次请求
-        Assert.Equal(2, (await CountRequestsPerCycle(points, mergeGap: 0, maxRegistersPerRead: 125, extraPoints: tail)).PerCycle);
+        // ② ignoreGap=0：空洞不吸收 → 每周期 2 次请求
+        Assert.Equal(2, (await CountRequestsPerCycle(points, ignoreGap: 0, groupLimitRegisters: 125, extraPoints: tail)).PerCycle);
 
-        // ③ maxRegistersPerRead=4：14 字必须按上限拆窗 → 每周期 3 次请求
-        Assert.Equal(3, (await CountRequestsPerCycle(points, mergeGap: 4, maxRegistersPerRead: 4, extraPoints: tail)).PerCycle);
+        // ③ groupLimitRegisters=4：14 字必须按地址组上限拆成多次请求（同一节拍内读完） → 每周期 3 次请求
+        Assert.Equal(3, (await CountRequestsPerCycle(points, ignoreGap: 4, groupLimitRegisters: 4, extraPoints: tail)).PerCycle);
     }
 
     private sealed class CycleStats
@@ -390,17 +389,16 @@ public sealed class ComplexStubAcquisitionTests
         public override string ToString() => "请求 " + Requests + " 次 / " + Cycles + " 周期 = 每周期 " + PerCycle + " 次";
     }
 
-    /// <summary>用镜像请求日志统计「每周期请求数」，验证散点合并与单次读上限行为。</summary>
-    private async Task<CycleStats> CountRequestsPerCycle(string points, int mergeGap, int maxRegistersPerRead,
+    /// <summary>用镜像请求日志统计「每周期请求数」，验证散点自动分组与地址组上限行为。</summary>
+    private async Task<CycleStats> CountRequestsPerCycle(string points, int ignoreGap, int groupLimitRegisters,
         string extraPoints)
     {
         // 观察窗口取 2s @ 300ms 一拍 ≈ 6 拍；允许 ±1 拍边界误差（断言用 ±2 次请求的容差）
-        const int rateMs = 300;
+        const int intervalMs = 300;
         const int windowMs = 2000;
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" /><Polling rateMs=\"" + rateMs + "\" requestTimeoutMs=\"3000\" />" +
-                  "<Scheduler mergeGap=\"" + mergeGap + "\" maxRegistersPerRead=\"" + maxRegistersPerRead + "\" /></Global>" +
-                  "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"" + rateMs + "\" /></ScanGroups>" +
+                  "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"" + intervalMs + "\" requestTimeoutMs=\"3000\" />" +
+                  "<Scheduler ignoreGap=\"" + ignoreGap + "\" groupLimitRegisters=\"" + groupLimitRegisters + "\" /></Global>" +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("wo", "p3", 7, "ps") + "</Devices>" +
                   "<PointSets><PointSet id=\"ps\"><Points>" + points + extraPoints + "</Points></PointSet></PointSets>" +
@@ -417,7 +415,7 @@ public sealed class ComplexStubAcquisitionTests
             await Task.Delay(windowMs);
             var after = _stub.CountSimLogLines(_stub.SimPortP3, 7);
 
-            return new CycleStats { Requests = after - before, Cycles = windowMs / rateMs };
+            return new CycleStats { Requests = after - before, Cycles = windowMs / intervalMs };
         }
         finally
         {
@@ -470,16 +468,14 @@ public sealed class ComplexStubAcquisitionTests
         _stub.RequireSimLog();
 
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" /><Polling rateMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
-                  "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"200\" />" +
-                  "<ScanGroup id=\"od\" mode=\"onDemand\" /></ScanGroups>" +
+                  "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("wo", "p3", 7, "ps") + "</Devices>" +
                   "<PointSets><PointSet id=\"ps\"><Points>" +
                   ComplexStubFixture.Point("od.f32", 0, "float32",
-                      "unitId=\"8\" swap=\"badc\" scanGroup=\"od\"") +
+                      "unitId=\"8\" swap=\"badc\" mode=\"onDemand\"") +
                   ComplexStubFixture.Point("np.f32", 0, "float32",
-                      "unitId=\"8\" swap=\"badc\" scanGroup=\"normal\"") +
+                      "unitId=\"8\" swap=\"badc\"") +
                   "</Points></PointSet></PointSets></SamplerConfig>";
 
         using var engine = new SamplerEngine(_stub.LoadConfig(xml));
@@ -647,22 +643,17 @@ public sealed class ComplexStubAcquisitionTests
         }
     }
 
-    // ─────────────────────── C1-8：扫描组 poll / once / onDemand ───────────────────────
+    // ─────────────────────── C1-8：模式 auto / once / onDemand ───────────────────────
 
     [SkippableFact]
-    public async Task C1_ScanGroupModes_PollOnceOnDemand()
+    public async Task C1_IntervalAndModes_AutoOnceOnDemand()
     {
         _stub.RequireStub();
         _stub.RequireSimLog();
 
-        // unit 7 = poll（持续）、unit 8 = once（只跑一次）、unit 9 = onDemand（不轮询，手动触发）
+        // unit 7 = auto（250ms 持续）、unit 8 = once（只跑一次）、unit 9 = onDemand（不轮询，手动触发）
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" /><Polling rateMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
-                  "<ScanGroups>" +
-                  "<ScanGroup id=\"poll\" mode=\"poll\" rateMs=\"250\" />" +
-                  "<ScanGroup id=\"once\" mode=\"once\" rateMs=\"250\" />" +
-                  "<ScanGroup id=\"od\" mode=\"onDemand\" rateMs=\"250\" />" +
-                  "</ScanGroups>" +
+                  "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
                   "<Devices>" +
                   ComplexStubFixture.Device("pollDev", "p3", 7, "psPoll") +
@@ -670,9 +661,9 @@ public sealed class ComplexStubAcquisitionTests
                   ComplexStubFixture.Device("odDev", "p3", 9, "psOd") +
                   "</Devices>" +
                   "<PointSets>" +
-                  "<PointSet id=\"psPoll\"><Points>" + ComplexStubFixture.Point("v", 1, "uint16", "area=\"input\" scanGroup=\"poll\"") + "</Points></PointSet>" +
-                  "<PointSet id=\"psOnce\"><Points>" + ComplexStubFixture.Point("v", 1, "uint16", "area=\"input\" scanGroup=\"once\"") + "</Points></PointSet>" +
-                  "<PointSet id=\"psOd\"><Points>" + ComplexStubFixture.Point("v", 1, "uint16", "area=\"input\" scanGroup=\"od\"") + "</Points></PointSet>" +
+                  "<PointSet id=\"psPoll\"><Points>" + ComplexStubFixture.Point("v", 1, "uint16", "area=\"input\" intervalMs=\"250\"") + "</Points></PointSet>" +
+                  "<PointSet id=\"psOnce\"><Points>" + ComplexStubFixture.Point("v", 1, "uint16", "area=\"input\" mode=\"once\"") + "</Points></PointSet>" +
+                  "<PointSet id=\"psOd\"><Points>" + ComplexStubFixture.Point("v", 1, "uint16", "area=\"input\" mode=\"onDemand\"") + "</Points></PointSet>" +
                   "</PointSets></SamplerConfig>";
 
         using var engine = new SamplerEngine(_stub.LoadConfig(xml));
@@ -689,7 +680,7 @@ public sealed class ComplexStubAcquisitionTests
             var once = _stub.CountSimLogLines(_stub.SimPortP3, 8) - onceBefore;
             var od = _stub.CountSimLogLines(_stub.SimPortP3, 9) - odBefore;
 
-            Assert.True(poll >= 3, "poll 组应持续轮询（实测 " + poll + " 次）");
+            Assert.True(poll >= 3, "auto 点应持续轮询（实测 " + poll + " 次）");
             Assert.Equal(1, once);
             Assert.Equal(0, od);
 
@@ -845,6 +836,48 @@ public sealed class ComplexStubAcquisitionTests
         finally
         {
             open.Dispose();
+        }
+    }
+
+    // ─────────────────────── C1-8：点位脚本解码（复杂桩真链路，ADR D41） ───────────────────────
+
+    [SkippableFact]
+    public async Task C1_Script_points_decode_on_real_complex_stub()
+    {
+        _stub.RequireStub();
+
+        // 同一个寄存器读三份：原值 / 脚本（表达式）/ 脚本（含 return 的方法体 + 字符串分支）。
+        // 断言与桩的动态数据自洽（不依赖具体数值）：脚本结果必须与同址原值一致地成立。
+        var points = ComplexStubFixture.Point("p.plain", 0, "uint16", "area=\"holding\"")
+            + ComplexStubFixture.Point("p.plus1", 0, "uint16", "area=\"holding\"", "<Script>rawValue + 1</Script>")
+            + ComplexStubFixture.Point("p.tag", 0, "uint16", "area=\"holding\"",
+                "<Script timeoutMs=\"50\">if (rawValue &gt; 0) { return 'POS'; } return 'NONPOS';</Script>");
+
+        var xml = "<SamplerConfig schemaVersion=\"3.0\">" + GlobalFast +
+                  "<Transports>" + ComplexStubFixture.Transport("p1", _stub.SimPortP1) + "</Transports>" +
+                  "<Devices>" + ComplexStubFixture.Device("im1", "p1", 1, "ps_script") + "</Devices>" +
+                  "<PointSets><PointSet id=\"ps_script\"><Defaults swap=\"abcd\" /><Points>" + points +
+                  "</Points></PointSet></PointSets></SamplerConfig>";
+
+        using var engine = new SamplerEngine(_stub.LoadConfig(xml));
+        engine.Start();
+        try
+        {
+            IDeviceManager m = engine;
+
+            var plain = F.GetAs<ushort>(await ComplexStubFixture.WaitGoodAsync(m, "im1", "p.plain"));
+            var plus1 = F.GetAs<double>(await ComplexStubFixture.WaitGoodAsync(m, "im1", "p.plus1"));
+            var tag = F.GetAs<string>(await ComplexStubFixture.WaitGoodAsync(m, "im1", "p.tag"));
+
+            Assert.Equal(plain + 1.0, plus1);
+            Assert.Equal(plain > 0 ? "POS" : "NONPOS", tag);
+
+            // 脚本点也进缓存与门面（脚本产物即工程值）
+            Assert.False(string.IsNullOrEmpty(m.GetValue("im1", "p.plus1")));
+        }
+        finally
+        {
+            engine.Dispose();
         }
     }
 }

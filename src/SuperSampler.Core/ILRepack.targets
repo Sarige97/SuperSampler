@@ -1,0 +1,59 @@
+<Project>
+  <!--
+    ILRepack 合并目标（发布打包用，2026-09-16 恢复脚本引擎时一并修好）。
+
+    这个文件是 ILRepack.Lib.MSBuild.Task 包**设计好的接管点**，作用有两个：
+      ① 包自带的 build/ILRepack.Lib.MSBuild.Task.targets 会导入 $(ILRepackTargetsFile)（默认即本文件），
+         并在此之前把 ILRepack 任务声明为可用（UsingTask）；
+      ② 包内置的「只要 Configuration 含 Release 就自动合并整个输出目录」目标带条件
+         !Exists('$(ILRepackTargetsFile)')——本文件一旦存在，它和它的清理目标都不再执行。
+
+    为什么必须关掉包的默认行为（实测）：
+      * dotnet CLI（.NET Core 版 MSBuild）在 -c Release 下会执行包内置目标，早先的任务程序集
+        （2.0.18.2）是 net461 且引用 Microsoft.Build.Utilities.v4.0 → 任务加载失败报 MSB4062
+        「未能从程序集 … 加载任务 ILRepack」，Release 构建整体失败；
+      * 即便加载成功，它也会把输出目录里**所有** DLL 合并进 Core.dll 并删掉本地的引用副本——
+        不需要合并的日常 Release 构建被顺带改坏。
+    修法：任务包用 2.0.46（引用 Microsoft.Build.Utilities.Core 15.1.0.0，dotnet CLI 可加载），
+    合并只保留下面这一个由 EnableILRepack 显式门禁的目标。
+
+    用法：dotnet build -c Release -p:EnableILRepack=true
+    产物：$(OutputPath)merged/SuperSampler.Core.dll——Core + Abstractions + Drivers.Modbus + Jint 四合一
+          （宿主只需引这一个 DLL；Jint 已 internalize）。日常构建产物原样保留，不受影响。
+
+    为什么产物另放 merged/ 子目录而不是就地覆盖、也不改名：
+      ILRepack 用**输出文件名**给合并后的程序集命名（实测：输出 Core-merged.dll 得到程序集标识
+      "SuperSampler.Core-merged"），标识一变宿主就加载不了它。所以输出必须仍叫 SuperSampler.Core.dll；
+      要保留日常产物就换个目录（merged/）。宿主取 merged/ 下的 Core.dll 即可得到零外部依赖的单 DLL。
+
+    2026-09-17：合并输入从 Core+Jint 扩为 Core+Abstractions+Drivers.Modbus+Jint（InjectionHost 单 DLL 接入）。
+      Internalize 必须为 **false**：Internalize=true 会把 Abstractions 的公开事件类型（PointValueChangedEvent 等，
+      它们不在 Core 的公开方法签名里，只在宿主订阅处用到）内化成 internal，宿主拿到合并 DLL 后订阅不了事件。
+      代价：Jint 与驱动内部类型也在合并 DLL 里变成 public——无害（宿主不会去用，命名空间隔离）。
+  -->
+  <Target Name="ILRepackMerge" AfterTargets="Build" Condition="'$(EnableILRepack)' == 'true'">
+    <!-- 显式门禁 + 显式失败：需要合并却拿不到依赖 DLL 时报错，绝不静默跳过（D30 声明即生效） -->
+    <Error Condition="!Exists('$(OutputPath)Jint.dll')"
+           Text="ILRepack 合并需要 $(OutputPath)Jint.dll：请先还原 Jint 包（dotnet restore）" />
+    <Error Condition="!Exists('$(OutputPath)SuperSampler.Abstractions.dll')"
+           Text="ILRepack 合并需要 $(OutputPath)SuperSampler.Abstractions.dll" />
+    <Error Condition="!Exists('$(OutputPath)SuperSampler.Drivers.Modbus.dll')"
+           Text="ILRepack 合并需要 $(OutputPath)SuperSampler.Drivers.Modbus.dll" />
+    <MakeDir Directories="$(OutputPath)merged" />
+    <ItemGroup>
+      <!-- 顺序有意义：ILRepack 把 InputAssemblies 的**第一项**当主程序集（2.0.46 已无 PrimaryAssembly 参数） -->
+      <MergeAssemblies Include="$(OutputPath)$(AssemblyName).dll" />
+      <MergeAssemblies Include="$(OutputPath)SuperSampler.Abstractions.dll" />
+      <MergeAssemblies Include="$(OutputPath)SuperSampler.Drivers.Modbus.dll" />
+      <MergeAssemblies Include="$(OutputPath)Jint.dll" />
+    </ItemGroup>
+    <ILRepack
+      OutputFile="$(OutputPath)merged/$(AssemblyName).dll"
+      InputAssemblies="@(MergeAssemblies)"
+      TargetKind="SameAsPrimaryAssembly"
+      LibraryPath="$(OutputPath)"
+      Internalize="false"
+      Parallel="true"
+      DebugInfo="true" />
+  </Target>
+</Project>

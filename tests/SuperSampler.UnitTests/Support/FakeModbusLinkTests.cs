@@ -115,9 +115,9 @@ public class FakeModbusLinkTests
 
         link.SetOpen(false);
         link.SetOpen(false); // 重复无效
+        Assert.False(link.IsOpen);
         link.SetOpen(true);
 
-        Assert.False(link.IsOpen == false);
         Assert.True(link.IsOpen);
         Assert.Equal(1, link.CloseCount);
         Assert.Equal(1, link.OpenCount); // 构造时的初始 Open 不计为转换

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -41,8 +41,11 @@ public class SamplerConfigLoaderTests
     {
         var cfg = Load(DEFAULTS_TEST);
         var point = cfg.PointSets[0].Points[0];
-        // 未显式写 scanGroup 的点继承 Defaults.scanGroup=fast
-        Assert.Equal("fast", point.ScanGroup);
+        // 未显式写 dataType 的点继承 Defaults.dataType=uint32
+        Assert.Equal(RuntimeDataType.UInt32, point.DataType);
+        // 节奏不在 Defaults 里：未写 intervalMs → null（运行期取全局默认），未写 mode → auto
+        Assert.Null(point.IntervalMs);
+        Assert.Equal("auto", point.Mode);
     }
 
     [Fact]
@@ -62,17 +65,19 @@ public class SamplerConfigLoaderTests
     }
 
     [Fact]
-    public void Missing_scan_group_reference_throws()
+    public void Removed_scan_group_attribute_throws()
     {
+        // 旧写法零兼容：scanGroup 已删除，写了直接报错并提示改用 intervalMs（CGV-25）
         var ex = Assert.Throws<ConfigValidationException>(() => Load(BAD_SCANGROUP_TEST));
-        Assert.Contains(ex.Errors, e => e.Contains("不存在的扫描组"));
+        Assert.Contains(ex.Errors, e => e.Contains("属性 scanGroup=\"ghost\" 已删除"));
+        Assert.Contains(ex.Errors, e => e.Contains("intervalMs"));
     }
 
     [Fact]
     public void Block_count_over_125_throws()
     {
         var ex = Assert.Throws<ConfigValidationException>(() => Load(BLOCK_TOO_BIG));
-        Assert.Contains(ex.Errors, e => e.Contains("寄存器区 125"));
+        Assert.Contains(ex.Errors, e => e.Contains("地址组上限 125"));
     }
 
     // ─────────────── 第二轮校验规则（一次触发一条）───────────────
@@ -135,9 +140,6 @@ public class SamplerConfigLoaderTests
 
     private const string CGV8_LENGTH_MISMATCH = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -152,9 +154,6 @@ public class SamplerConfigLoaderTests
 
     private const string CGV9_PLC_AREA_CONFLICT = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -169,9 +168,6 @@ public class SamplerConfigLoaderTests
 
     private const string CGV10_READ_WRITE_CONFLICT = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -189,9 +185,6 @@ public class SamplerConfigLoaderTests
     private const string CGV13_UNKNOWN_PRIORITY = """
         <SamplerConfig schemaVersion="3.0">
           <AlarmClasses />
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -211,9 +204,6 @@ public class SamplerConfigLoaderTests
           <AlarmClasses>
             <AlarmClass id="CRITICAL" />
           </AlarmClasses>
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -230,9 +220,6 @@ public class SamplerConfigLoaderTests
 
     private const string I18N_MISSING_KEY = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -254,9 +241,6 @@ public class SamplerConfigLoaderTests
               </Steps>
             </Command>
           </Commands>
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -278,9 +262,6 @@ public class SamplerConfigLoaderTests
               </Steps>
             </Command>
           </Commands>
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -296,9 +277,6 @@ public class SamplerConfigLoaderTests
     private const string MINIMAL = """
         <SamplerConfig schemaVersion="3.0">
           <Global swap="none" />
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports>
             <Transport id="tcp1" host="127.0.0.1" />
           </Transports>
@@ -317,9 +295,6 @@ public class SamplerConfigLoaderTests
 
     private const string DEFAULTS_TEST = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-            <ScanGroup id="fast" rateMs="500" />
-          </ScanGroups>
           <Transports>
             <Transport id="tcp1" host="127.0.0.1" />
           </Transports>
@@ -328,7 +303,7 @@ public class SamplerConfigLoaderTests
           </Devices>
           <PointSets>
             <PointSet id="ps1">
-              <Defaults scanGroup="fast" dataType="uint32" />
+              <Defaults dataType="uint32" />
               <Points>
                 <Point id="p1" address="0" />
               </Points>
@@ -339,9 +314,6 @@ public class SamplerConfigLoaderTests
 
     private const string TEMPLATE_TEST = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports>
             <Transport id="tcp1" host="127.0.0.1" />
           </Transports>
@@ -363,9 +335,6 @@ public class SamplerConfigLoaderTests
 
     private const string DUP_POINT_TEST = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -381,9 +350,6 @@ public class SamplerConfigLoaderTests
 
     private const string BAD_SCANGROUP_TEST = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -398,9 +364,6 @@ public class SamplerConfigLoaderTests
 
     private const string BLOCK_TOO_BIG = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="x" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -460,9 +423,6 @@ public class PointRegistryTests
 
     private const string XML = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>
@@ -477,9 +437,6 @@ public class PointRegistryTests
 
     private const string BLOCK_XML = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups>
-          <ScanGroup id="normal" />
-          </ScanGroups>
           <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
           <Devices><Device id="d1" transport="tcp1" pointSet="ps1" /></Devices>
           <PointSets>

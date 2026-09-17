@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,8 +55,15 @@ public enum AlarmAckOutcome
     Acknowledged = 0,
 
     /// <summary>
-    /// 该报警当前没有状态记录：从未触发过，或 alarmId 不在该点位的报警配置里。
-    /// 未发出任何事件；这不是失败（重复确认、确认已恢复正常的报警都走这里）。
+    /// 该报警当前没有可确认的状态：**从未触发过**（状态条目在、但 <c>Raised</c> 一直为 false），
+    /// 或该 (deviceId, pointId, alarmId) 从未被评估过 / alarmId 不在该点位的报警配置里（无状态条目）。
+    /// 未发出任何事件；这不是失败。
+    /// <para>
+    /// findings W60 的口径订正（按实现 <c>AlarmEngine.TryAcknowledge</c>）：只要该报警**触发过**，
+    /// 就返回 <see cref="AlarmAckOutcome.Acknowledged"/> 并再发一条 AlarmAcknowledgedEvent——
+    /// 因此「重复确认」与「确认已恢复正常的报警」都算成功（确认是幂等运维动作，
+    /// 宿主不必自己判「是不是已经确认过了」）。
+    /// </para>
     /// </summary>
     NotPending = 1,
 }
@@ -108,4 +116,20 @@ public interface IDeviceManager
     /// <summary>带操作者身份的报警确认：确认事件与审计按该用户记账。</summary>
     /// <exception cref="KeyNotFoundException">deviceId 或 pointId 不存在。</exception>
     Task<AlarmAckResult> AcknowledgeAlarmAsync(string deviceId, string pointId, string alarmId, ActingUser user, CancellationToken ct = default);
+
+    /// <summary>
+    /// 「多久没刷新」：距该点位**上次成功采集**的时长（ADR D40）。
+    /// <c>null</c> = 从未成功采集过（如引擎刚启动、该点一直读不到）。
+    /// <para>
+    /// 「成功采集」= 该点所在读窗口通讯成功且该点完成解码落缓存；解码降级为 <c>Uncertain</c>/<c>Bad</c>
+    /// （NaN、短帧等）也算采集成功——那说明通讯是通的。通讯失败置坏**不算**成功采集。
+    /// 计算点按「上次求值成功」计。
+    /// </para>
+    /// <para>
+    /// 框架**不做**陈旧判定：一个点算不算「太久没刷新」取决于工艺（温度 1s、配方 1h），
+    /// 由宿主用这个值配合自己的阈值决定置灰/提示，不在这里硬编码。
+    /// </para>
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">deviceId 或 pointId 不存在。</exception>
+    TimeSpan? GetValueAge(string deviceId, string pointId);
 }

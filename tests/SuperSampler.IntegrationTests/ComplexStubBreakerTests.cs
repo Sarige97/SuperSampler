@@ -32,17 +32,19 @@ public sealed class ComplexStubBreakerTests
 
     private static string PointPolled(string id, int address, string dataType, string area = "holding")
         => ComplexStubFixture.Point(id, address, dataType,
-            "area=\"" + area + "\" swap=\"abcd\" scanGroup=\"normal\"");
+            "area=\"" + area + "\" swap=\"abcd\"");
 
     /// <summary>造一台只读一个点的设备（点随配置走），默认 polling 200ms / 超时 800ms。</summary>
     private SamplerEngine BuildEngine(int publicPort, int unitId, string pointsXml,
         string quality = "<Quality onCommError=\"bad\" onCommErrorValue=\"null\" />",
-        int rateMs = 200, int requestTimeoutMs = 800)
+        int intervalMs = 200, int requestTimeoutMs = 800)
     {
+        // 关掉两层退避：本组用例测的是 Quality@onCommError 策略、断路器各种故障形态与
+        // 一窗一条聚合错误；退避期间不发请求会改变这些计数的口径（退避自身见 ComplexStubBackoffTests）
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" intervalMs=\"10\" /><Polling rateMs=\"" + rateMs +
-                  "\" requestTimeoutMs=\"" + requestTimeoutMs + "\" />" + quality + "</Global>" +
-                  "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"" + rateMs + "\" /></ScanGroups>" +
+                  "<Global><Retry count=\"0\" intervalMs=\"10\" /><Polling defaultIntervalMs=\"" + intervalMs +
+                  "\" requestTimeoutMs=\"" + requestTimeoutMs + "\" />" +
+                  "<Reconnect enabled=\"false\" />" + quality + "</Global>" +
                   "<Transports>" + ComplexStubFixture.Transport("pub", publicPort, "tcp", requestTimeoutMs) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("d", "pub", unitId, "ps") + "</Devices>" +
                   "<PointSets><PointSet id=\"ps\"><Points>" + pointsXml + "</Points></PointSet></PointSets>" +
@@ -160,7 +162,7 @@ public sealed class ComplexStubBreakerTests
             var points = string.Concat(
                 PointPolled("p.a", 1, "uint16", "input"),
                 PointPolled("p.b", 2, "uint16", "input"));
-            using var engine = BuildEngine(PortP3, 7, points, rateMs: 300, requestTimeoutMs: 600);
+            using var engine = BuildEngine(PortP3, 7, points, intervalMs: 300, requestTimeoutMs: 600);
             using var timeouts = new ComplexStubFixture.EventCollector<TimeoutError>(engine.Bus);
 
             await ComplexStubFixture.WaitGoodAsync(engine, "d", "p.a");
@@ -208,7 +210,7 @@ public sealed class ComplexStubBreakerTests
         try
         {
             using var engine = BuildEngine(PortP1, 2, PointPolled("p.temp", 0, "uint16", "input"),
-                rateMs: 150, requestTimeoutMs: 300);
+                intervalMs: 150, requestTimeoutMs: 300);
             using var errors = new ComplexStubFixture.EventCollector<IErrorEvent>(engine.Bus);
 
             await ComplexStubFixture.WaitGoodAsync(engine, "d", "p.temp");
@@ -243,7 +245,7 @@ public sealed class ComplexStubBreakerTests
         {
             // 超时预算 1200ms > 延迟 300ms → 不应产生任何超时错误
             using var engine = BuildEngine(PortP1, 3, PointPolled("p.temp", 0, "uint16", "input"),
-                rateMs: 300, requestTimeoutMs: 1200);
+                intervalMs: 300, requestTimeoutMs: 1200);
             using var errors = new ComplexStubFixture.EventCollector<IErrorEvent>(engine.Bus);
 
             await ComplexStubFixture.WaitGoodAsync(engine, "d", "p.temp");
@@ -274,7 +276,7 @@ public sealed class ComplexStubBreakerTests
         try
         {
             using var engine = BuildEngine(PortP1, 4, PointPolled("p.temp", 0, "uint16", "input"),
-                rateMs: 300, requestTimeoutMs: 600);
+                intervalMs: 300, requestTimeoutMs: 600);
             using var errors = new ComplexStubFixture.EventCollector<IErrorEvent>(engine.Bus);
 
             await ComplexStubFixture.WaitGoodAsync(engine, "d", "p.temp");
@@ -312,9 +314,9 @@ public sealed class ComplexStubBreakerTests
             // P4 为 rtuOverTcp：篡改应答 CRC 后，主站必须校验出来（MODBUS.LINK，而不是超时）
             var points = PointPolled("p.temp", 0, "uint16", "input");
             var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                      "<Global><Retry count=\"0\" /><Polling rateMs=\"300\" requestTimeoutMs=\"800\" />" +
+                      "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"300\" requestTimeoutMs=\"800\" />" +
+                      "<Reconnect enabled=\"false\" />" +
                       "<Quality onCommError=\"bad\" onCommErrorValue=\"null\" /></Global>" +
-                      "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"300\" /></ScanGroups>" +
                       "<Transports>" + ComplexStubFixture.Transport("pub", PortP4, "rtuovertcp", 800) + "</Transports>" +
                       "<Devices>" + ComplexStubFixture.Device("d", "pub", 1, "ps") + "</Devices>" +
                       "<PointSets><PointSet id=\"ps\"><Points>" + points + "</Points></PointSet></PointSets>" +
@@ -385,9 +387,9 @@ public sealed class ComplexStubBreakerTests
     private SamplerEngine BuildEngineForDirectStub(string pointsXml)
     {
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" /><Polling rateMs=\"20\" requestTimeoutMs=\"1000\" />" +
+                  "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"60\" requestTimeoutMs=\"1000\" />" +
+                  "<Reconnect enabled=\"false\" />" +
                   "<Quality onCommError=\"bad\" onCommErrorValue=\"null\" /></Global>" +
-                  "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"20\" /></ScanGroups>" +
                   "<Transports>" + ComplexStubFixture.Transport("sim", _stub.SimPortP3, "tcp", 1000) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("wo", "sim", 7, "ps") + "</Devices>" +
                   "<PointSets><PointSet id=\"ps\"><Defaults swap=\"abcd\" /><Points>" + pointsXml + "</Points></PointSet></PointSets>" +

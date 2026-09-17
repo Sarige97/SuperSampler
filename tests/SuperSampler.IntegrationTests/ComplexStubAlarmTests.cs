@@ -46,8 +46,7 @@ public sealed class ComplexStubAlarmTests
             " priority=\"P1\" message=\"${alarm.overtemp}\" latch=\"true\" ackRequired=\"true\" />");
 
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" /><Polling rateMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
-                  "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"200\" /></ScanGroups>" +
+                  "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
                   "<I18n><Files><File path=\"" + langPath.Replace("\\", "/") + "\" /></Files></I18n>" +
                   "<AlarmClasses><AlarmClass id=\"P1\" /></AlarmClasses>" +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
@@ -143,9 +142,11 @@ public sealed class ComplexStubAlarmTests
                 "<Alarm id=\"A-BAD\" type=\"high\" limit=\"300\" deadband=\"50\" />");
 
             var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                      "<Global><Retry count=\"0\" /><Polling rateMs=\"200\" requestTimeoutMs=\"800\" />" +
+                      "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"200\" requestTimeoutMs=\"800\" />" +
+                      // 关掉两层退避：本用例测的是「onCommError 置坏期间不参与报警评估」，
+                      // 退避会把质量改判 offlineQuality（退避自身的行为见 ComplexStubBackoffTests）
+                      "<Reconnect enabled=\"false\" />" +
                       "<Quality onCommError=\"bad\" onCommErrorValue=\"null\" /></Global>" +
-                      "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"200\" /></ScanGroups>" +
                       "<Transports>" + ComplexStubFixture.Transport("pub", publicPort, "tcp", 800) + "</Transports>" +
                       "<Devices>" + ComplexStubFixture.Device("env", "pub", 6, "ps") + "</Devices>" +
                       "<PointSets><PointSet id=\"ps\"><Defaults swap=\"abcd\" /><Points>" + point + "</Points></PointSet></PointSets>" +

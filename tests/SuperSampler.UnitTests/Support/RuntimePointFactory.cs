@@ -35,10 +35,13 @@ internal static class RuntimePointFactory
         public int Length { get; set; }
         public int? Bit { get; set; }
         public string? BitRange { get; set; }
+        public IReadOnlyList<SliceConfig>? Slices { get; set; }
         public ScaleConfig? Scale { get; set; }
         public FormatConfig? Format { get; set; }
         public int BcdDigits { get; set; } = 4;
         public string DateTimeFormat { get; set; } = "plc6";
+        public int StringPadding { get; set; }
+        public bool StringPadLeft { get; set; } = true;
         public List<AlarmConfig> Alarms { get; } = new();
 
         public PointConfig Build()
@@ -55,10 +58,13 @@ internal static class RuntimePointFactory
                 Length = Length,
                 Bit = Bit,
                 BitRange = BitRange,
+                Slices = Slices,
                 Scale = Scale,
                 Format = Format,
                 BcdDigits = BcdDigits,
                 DateTimeFormat = DateTimeFormat,
+                StringPadding = StringPadding,
+                StringPadLeft = StringPadLeft,
             };
             point.Alarms.AddRange(Alarms);
             return point;

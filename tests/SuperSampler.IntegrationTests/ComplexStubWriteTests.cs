@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -31,9 +31,8 @@ public sealed class ComplexStubWriteTests
     private const string GlobalFast = """
         <Global>
           <Retry count="0" intervalMs="10" />
-          <Polling rateMs="200" requestTimeoutMs="3000" />
+          <Polling defaultIntervalMs="200" requestTimeoutMs="3000" />
         </Global>
-        <ScanGroups><ScanGroup id="normal" mode="poll" rateMs="200" /><ScanGroup id="od" mode="onDemand" /></ScanGroups>
         """;
 
     // ─────────────────────── C2-1：range 越界 → Rejected，且零通讯 ───────────────────────
@@ -46,7 +45,7 @@ public sealed class ComplexStubWriteTests
 
         // 点放在 onDemand 组：该从站不会有任何轮询请求，镜像日志里的请求只可能来自写
         var point = ComplexStubFixture.Point("env.limit", 2, "int16",
-            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" scanGroup=\"od\"",
+            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" mode=\"onDemand\"",
             "<Write min=\"0\" max=\"500\" verify=\"true\" />");
 
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" + GlobalFast +
@@ -99,7 +98,7 @@ public sealed class ComplexStubWriteTests
 
         // RO-LOCK（unit 11）：镜像对任何写请求回 0x02（只读保护）
         var point = ComplexStubFixture.Point("ro.value", 0, "uint16",
-            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" scanGroup=\"od\"");
+            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" mode=\"onDemand\"");
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" + GlobalFast +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("ro", "p3", 11, "ps") + "</Devices>" +
@@ -177,7 +176,7 @@ public sealed class ComplexStubWriteTests
 
         // ENV-01（unit 6）4x@2 温度报警上限：脚本只读不写 → 写完就是写值，verify 必须一致
         var point = ComplexStubFixture.Point("env.limit", 2, "int16",
-            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" scanGroup=\"od\"",
+            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" mode=\"onDemand\"",
             "<Write verify=\"true\" min=\"0\" max=\"500\" />");
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" + GlobalFast +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
@@ -214,11 +213,10 @@ public sealed class ComplexStubWriteTests
         // 写入值取 0x4321 = 17185 ≡ 1 (mod 3) → 回读值在数学上不可能与写入值相等，
         // 因此这是「设备改写（钳位/脚本覆写）」导致的确定性 verify 不一致，不依赖时序运气。
         var point = ComplexStubFixture.Point("slow.cell", 25, "uint16",
-            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" scanGroup=\"od\"",
+            "area=\"holding\" access=\"readwrite\" swap=\"abcd\" mode=\"onDemand\"",
             "<Write verify=\"true\" />");
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" /><Polling rateMs=\"500\" requestTimeoutMs=\"2500\" /></Global>" +
-                  "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"500\" /><ScanGroup id=\"od\" mode=\"onDemand\" /></ScanGroups>" +
+                  "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"500\" requestTimeoutMs=\"2500\" /></Global>" +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3, "tcp", 2500) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("slow", "p3", 14, "ps") + "</Devices>" +
                   "<PointSets><PointSet id=\"ps\"><Points>" + point + "</Points></PointSet></PointSets>" +
@@ -293,11 +291,10 @@ public sealed class ComplexStubWriteTests
         // ENV-01（unit 6）4x@30「报警使能位」初值 0x000F（bit0..3 为 1）
         var points = string.Concat(
             ComplexStubFixture.Point("env.bit5", 30, "bool", "area=\"holding\" bit=\"5\" access=\"readwrite\""),
-            ComplexStubFixture.Point("env.rawreg", 30, "uint16", "area=\"holding\" swap=\"abcd\" scanGroup=\"od\""));
+            ComplexStubFixture.Point("env.rawreg", 30, "uint16", "area=\"holding\" swap=\"abcd\" mode=\"onDemand\""));
 
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                  "<Global><Retry count=\"0\" /><Polling rateMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
-                  "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"200\" /><ScanGroup id=\"od\" mode=\"onDemand\" /></ScanGroups>" +
+                  "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"200\" requestTimeoutMs=\"3000\" /></Global>" +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
                   "<Devices>" + ComplexStubFixture.Device("env", "p3", 6, "ps") + "</Devices>" +
                   "<PointSets><PointSet id=\"ps\"><Defaults swap=\"abcd\" /><Points>" + points + "</Points></PointSet></PointSets>" +
@@ -391,10 +388,9 @@ public sealed class ComplexStubWriteTests
             Assert.True(ack.Ok, ack.ToString());
 
             var point = ComplexStubFixture.Point("im.curve", 41, "uint16",
-                "area=\"holding\" access=\"readwrite\" swap=\"abcd\" scanGroup=\"od\"");
+                "area=\"holding\" access=\"readwrite\" swap=\"abcd\" mode=\"onDemand\"");
             var xml = "<SamplerConfig schemaVersion=\"3.0\">" +
-                      "<Global><Retry count=\"0\" /><Polling rateMs=\"300\" requestTimeoutMs=\"800\" /></Global>" +
-                      "<ScanGroups><ScanGroup id=\"normal\" mode=\"poll\" rateMs=\"300\" /><ScanGroup id=\"od\" mode=\"onDemand\" /></ScanGroups>" +
+                      "<Global><Retry count=\"0\" /><Polling defaultIntervalMs=\"300\" requestTimeoutMs=\"800\" /></Global>" +
                       "<Transports>" + ComplexStubFixture.Transport("pub", publicPort, "tcp", 800) + "</Transports>" +
                       "<Devices>" + ComplexStubFixture.Device("im", "pub", 1, "ps") + "</Devices>" +
                       "<PointSets><PointSet id=\"ps\"><Points>" + point + "</Points></PointSet></PointSets>" +
@@ -441,10 +437,10 @@ public sealed class ComplexStubWriteTests
 
         var points = string.Concat(
             ComplexStubFixture.Point("env.limit", 2, "int16",
-                "area=\"holding\" access=\"readwrite\" swap=\"abcd\" scanGroup=\"od\"",
+                "area=\"holding\" access=\"readwrite\" swap=\"abcd\" mode=\"onDemand\"",
                 "<Write min=\"0\" max=\"500\" verify=\"true\" />"),
             ComplexStubFixture.Point("env.coil", 2, "bool",
-                "area=\"coil\" access=\"readwrite\" scanGroup=\"od\""));
+                "area=\"coil\" access=\"readwrite\" mode=\"onDemand\""));
 
         var xml = "<SamplerConfig schemaVersion=\"3.0\">" + GlobalFast +
                   "<Transports>" + ComplexStubFixture.Transport("p3", _stub.SimPortP3) + "</Transports>" +
@@ -455,7 +451,7 @@ public sealed class ComplexStubWriteTests
                   "<PointSets>" +
                   "<PointSet id=\"ps6\"><Points>" + points + "</Points></PointSet>" +
                   "<PointSet id=\"ps11\"><Defaults swap=\"abcd\" /><Points>" +
-                  ComplexStubFixture.Point("ro.v", 0, "uint16", "area=\"holding\" access=\"readwrite\" scanGroup=\"od\"") +
+                  ComplexStubFixture.Point("ro.v", 0, "uint16", "area=\"holding\" access=\"readwrite\" mode=\"onDemand\"") +
                   "</Points></PointSet>" +
                   "</PointSets></SamplerConfig>";
 

@@ -80,6 +80,12 @@ public interface IModbusLink : IDisposable
     /// <summary>通道是否已连接。</summary>
     bool IsOpen { get; }
 
+    /// <summary>
+    /// 关闭底层连接（链路级退避「关闭连接 → 等待 → 重连」的第一步）；下一次请求会惰性重连。
+    /// 关未开的连接是空操作。
+    /// </summary>
+    void Close();
+
     /// <summary>读位区或寄存器区。</summary>
     ModbusReply Read(DataArea area, int address, int count, byte unitId, int timeoutMs, int retries, int retryIntervalMs);
 
@@ -94,7 +100,8 @@ public interface IModbusLink : IDisposable
 /// Modbus 主站：PDU 级读写的重试与分类。
 /// 只管「这次请求成没成、失败属于哪类」，不认识点位；错误上下文由上层（引擎）补齐。
 /// 重试策略按 docs/02 第 2.2 节：超时与瞬时异常码（05/06/0A）重试；
-/// 永久码（01/02/03/04/08）绝不重试；链路失败不重试（交重连/下轮）。
+/// 永久码（01/02/03/04/08）绝不重试；0x0B（网关目标设备无响应）按 docs/02 §2.2 = LinkDown/按链路，
+/// 不重试也不按设备异常码处理；链路失败不重试（交重连/下轮）。
 /// </summary>
 public sealed partial class ModbusMaster : IModbusLink, IDisposable
 {
@@ -119,6 +126,9 @@ public sealed partial class ModbusMaster : IModbusLink, IDisposable
     public bool IsOpen => _channel.IsOpen;
 
     /// <inheritdoc />
+    public void Close() => _channel.Close();
+
+    /// <inheritdoc />
     public void Dispose() => ((IDisposable)_channel).Dispose();
 
     internal ModbusReply Execute(byte[] pdu, byte unitId, int timeoutMs, int retries, int retryIntervalMs)
@@ -136,6 +146,13 @@ public sealed partial class ModbusMaster : IModbusLink, IDisposable
             }
             catch (ModbusProtocolException ex)
             {
+                // 0x0B（网关目标设备无响应）按 docs/02 §2.2 = LinkDown /「按链路」：
+                // 不是请求级的瞬时错误，重试无意义；交上层按链路级退避与重连处理。
+                if (ex.Code == 0x0B)
+                {
+                    return ModbusReply.Fail(ModbusFailureKind.LinkDown, ex.Code, ex.Message, Elapsed(start));
+                }
+
                 // 永久码绝不重试；瞬时码（05/06/0A）按重试预算重发
                 if (attempt > retries || !IsTransientCode(ex.Code))
                 {

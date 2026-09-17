@@ -30,6 +30,14 @@ public sealed class AlarmEngine
     {
         public bool Active;
         public bool AckPending;
+
+        /// <summary>
+        /// 本报警是否**真的激活过**。状态记录在首次 <see cref="Evaluate"/> 时就会建立
+        /// （哪怕值一直在正常区），所以「有状态」不等于「触发过」——确认语义必须用这个标记区分，
+        /// 否则「确认一个从未触发的报警」会被当成成功确认（docs/03 要求返回 NotPending 且不发事件）。
+        /// </summary>
+        public bool Raised;
+
         public DateTime? PendingSince;
     }
 
@@ -75,8 +83,10 @@ public sealed class AlarmEngine
     /// <summary>
     /// 人工确认（可判定版本，ADR D36 / findings D22）：清除 AckPending（报警回到可重触发状态）
     /// 并发出 <see cref="AlarmAcknowledgedEvent"/>（含确认人）。
-    /// 返回 false 表示该 (deviceId, pointId, alarmId) 当前没有任何状态记录
-    /// （从未触发，或 alarmId 不在该点位的报警配置里）——此时不发事件，也不算失败。
+    /// 返回 false 表示「当前没有可确认的报警」，此时不发事件、也不算失败（docs/03）：
+    /// ①该 (deviceId, pointId, alarmId) 从未被评估过（无状态记录）；
+    /// ②评估过但**从未激活**（值一直在正常区）——状态在首次评估时就会建，
+    /// 但「从未触发」必须与「有状态」区分开，否则正常态点位也能被"确认"出一条审计事件。
     /// </summary>
     public bool TryAcknowledge(string deviceId, string pointId, string alarmId, string user)
     {
@@ -85,6 +95,7 @@ public sealed class AlarmEngine
 
         lock (state)
         {
+            if (!state.Raised) return false;
             state.AckPending = false;
         }
 
@@ -114,6 +125,7 @@ public sealed class AlarmEngine
         }
 
         state.Active = true;
+        state.Raised = true;   // 「触发过」的历史事实：确认语义的判据（见 TryAcknowledge）
         state.AckPending = config.Latch || config.AckRequired;
         _bus.Emit(new AlarmRaisedEvent(
             AlarmIdOf(point, config),

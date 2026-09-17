@@ -1,4 +1,0 @@
-﻿seq,host_time,event_type,error_class,code,source,level,message_key,context
-932,2026-09-15 23:36:53.561,TimeoutError,Transient,MODBUS.TIMEOUT,Device,Error,ss.error.comm,"device=IM-01, transport=lineA, unit=1, InputRegister@30, elapsed=2093ms, consecutive=14"
-1080,2026-09-15 23:36:57.560,TimeoutError,Transient,MODBUS.TIMEOUT,Device,Error,ss.error.comm,"device=IM-01, transport=lineA, unit=1, Coil@4, elapsed=4000ms, consecutive=4"
-1212,2026-09-15 23:37:01.560,TimeoutError,Transient,MODBUS.TIMEOUT,Device,Error,ss.error.comm,"device=IM-01, transport=lineA, unit=1, InputRegister@0, elapsed=4000ms, consecutive=11"

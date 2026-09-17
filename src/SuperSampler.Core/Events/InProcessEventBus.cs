@@ -13,6 +13,11 @@ namespace SuperSampler.Core.Events;
 /// 因此 docs/03 第 4.1 节的 A/B 双通道方案在此简化为统一实现。
 /// 代价是每个 Queued 订阅一条后台线程；订阅数通常为个位数到两位数，可接受，
 /// 将来订阅规模显著增大时再优化为共享泵。
+/// <para>
+/// 丢弃计数的口径（<see cref="ISubscription.Dropped"/> / <see cref="IEventBusMetrics.TotalDropped"/>）：
+/// 除「队列满按溢出策略丢弃」外，**退订/停止时队列里未投递的条目同样计入**——
+/// docs/03 第 4.4 条要求丢弃必须可见，静默丢弃会让宿主的审计漏记。
+/// </para>
 /// </summary>
 public sealed class InProcessEventBus : IEventBus, IDisposable
 {
@@ -373,6 +378,13 @@ public sealed class InProcessEventBus : IEventBus, IDisposable
 
             // 泵线程自身触发退订时不能 Join 自己
             if (!ReferenceEquals(Thread.CurrentThread, _pump)) _pump.Join(1000);
+
+            // 退订/停止时队列里仍未投递的事件同样是被丢弃的事件，必须计入计数：
+            // docs/03 第 4.4 条「丢弃必须可见（见 ISubscription.Dropped），绝不允许静默丢弃」。
+            // 此前这些条目在 Dropped / TotalDropped 里都查不到，宿主用丢弃计数做审计时会漏记。
+            // 计数放在 Join 之后：此刻泵已退出（或已按 1 秒上界放弃），队列内容已定型；
+            // 与泵并发取走的条目由泵正常投递，不会被这里误计。
+            while (_queue.TryTake(out _)) CountDropped();
 
             _cts.Dispose();
             _queue.Dispose();

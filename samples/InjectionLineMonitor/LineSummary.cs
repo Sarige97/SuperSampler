@@ -49,11 +49,11 @@ internal static class LineSummary
                                      + "  staleAfter=" + config.Global.StaleAfterMs.ToString(CultureInfo.InvariantCulture) + "ms"
                                      + "  原始读写=" + (config.Global.AllowRawAccess ? "开" : "关"));
 
-        text.AppendLine();
-        text.AppendLine("  扫描组     : " + string.Join("  ",
-            config.ScanGroups.Select(g => g.Id + "[" + g.Mode + " "
-                + (g.Mode == "poll" ? g.RateMs.ToString(CultureInfo.InvariantCulture) + "ms" : "-")
-                + (g.JitterMs > 0 ? "+" + g.JitterMs.ToString(CultureInfo.InvariantCulture) + "ms抖动" : string.Empty) + "]")));
+        text.AppendLine("  采集节奏   : 默认间隔 " + config.Global.DefaultIntervalMs.ToString(CultureInfo.InvariantCulture) + "ms"
+                                     + "（未写 intervalMs 的点位/块取它）"
+                                     + "  地址组上限 " + config.Global.GroupLimitRegisters.ToString(CultureInfo.InvariantCulture) + "寄存器/"
+                                     + config.Global.GroupLimitBits.ToString(CultureInfo.InvariantCulture) + "位"
+                                     + "  忽略间隔数 " + config.Global.IgnoreGap.ToString(CultureInfo.InvariantCulture));
 
         text.AppendLine("  链路       : " + string.Join("  ",
             config.Transports.Select(t => t.Id + "[" + t.Variant + " " + ConsoleOut.Show(t.Host) + ":"
@@ -66,7 +66,16 @@ internal static class LineSummary
         {
             var points = catalog.PointsOf(device.Id).ToList();
             var blocks = catalog.BlockIdsOf(device.Id).ToList();
-            var groups = string.Join("/", points.Select(p => p.ScanGroup).Distinct().OrderBy(g => g, StringComparer.Ordinal));
+
+            // 采集节奏按生效间隔汇总（未写 intervalMs 的取全局默认），另标出 onDemand / once 的点位数
+            var paces = string.Join("/", points.Where(p => !p.IsCalculated && !p.IsInBlock)
+                .GroupBy(p => p.IntervalMs ?? config.Global.DefaultIntervalMs)
+                .OrderBy(g => g.Key)
+                .Select(g => g.Key.ToString(CultureInfo.InvariantCulture) + "ms×" + g.Count().ToString(CultureInfo.InvariantCulture)));
+            var modes = string.Join("+", points.Where(p => !p.IsCalculated && p.Mode != "auto")
+                .GroupBy(p => p.Mode)
+                .OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => g.Key + "×" + g.Count().ToString(CultureInfo.InvariantCulture)));
 
             text.AppendLine("    " + device.Id.PadRight(12)
                 + " " + ConsoleOut.Show(device.Name).PadRight(10)
@@ -74,7 +83,7 @@ internal static class LineSummary
                 + " unitId=" + device.UnitId.ToString(CultureInfo.InvariantCulture).PadRight(3)
                 + " 点位=" + points.Count.ToString(CultureInfo.InvariantCulture).PadRight(4)
                 + " 可写=" + points.Count(p => p.IsWritable).ToString(CultureInfo.InvariantCulture).PadRight(3)
-                + " 扫描组=" + groups.PadRight(18)
+                + " 节奏=" + (paces.Length == 0 ? "-" : paces + (modes.Length == 0 ? string.Empty : " " + modes)).PadRight(28)
                 + (blocks.Count > 0 ? " 块=" + string.Join(",", blocks) : " 块=无（全散点）"));
 
             // 网关下多从站：把点位实际落在哪个从站打出来，这是最容易配错的地方

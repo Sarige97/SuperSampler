@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,6 +22,11 @@ namespace SuperSampler.UnitTests.Runtime;
 /// verify 回读不一致、单字/多字写分流、编码失败拒绝、未知点位；
 /// GetValue 格式化/nullText/未知 id、缓存直读零通讯、RawRead 开关、TriggerRead/TriggerBlockRead。
 /// </summary>
+/// <remarks>
+/// 加入命名集合 <c>real-polling-threads</c>：本类会起**真实轮询线程**，
+/// 与 <c>BackoffTests.B16</c>（断言进程级句柄数）必须串行执行，否则并行开的线程会被误判成泄漏。
+/// </remarks>
+[Collection("real-polling-threads")]
 public class FacadeWriteGapTests
 {
     private static SamplerConfiguration Cfg(string pointXml, bool allowRaw = false)
@@ -33,15 +38,11 @@ public class FacadeWriteGapTests
         return """
             <SamplerConfig schemaVersion="3.0">{DIAG}
               <Global nullText="--" />
-              <ScanGroups>
-                <ScanGroup id="normal" />
-                <ScanGroup id="onDemand" mode="onDemand" />
-              </ScanGroups>
               <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
               <Devices><Device id="d1" transport="tcp1" pointSet="ps1" unitId="7" /></Devices>
               <PointSets><PointSet id="ps1">
                 <Blocks>
-                  <Block id="b1" start="0" count="5" scanGroup="onDemand">
+                  <Block id="b1" start="0" count="5" mode="onDemand">
                     <Point id="bp" address="0" />
                   </Block>
                 </Blocks>
@@ -257,6 +258,8 @@ public class FacadeWriteGapTests
     {
         var link = new FakeModbusLink();
         link.SetReadData(7, DataArea.HoldingRegister, 40, 50); // 越限（limit=10）
+        // 同节拍的另一个散点窗口（address=10）也要读得到：读失败会进退避，本该成功的报警窗口就没机会读
+        link.DefaultReadData = new ushort[64];
         using var engine = Engine(link, LATCH_ALARM_POINT);
 
         var raised = new List<AlarmRaisedEvent>();

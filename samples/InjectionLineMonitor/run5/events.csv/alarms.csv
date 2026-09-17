@@ -1,5 +1,0 @@
-﻿seq,host_time,state,alarm_id,device,point,type,limit,value,priority,user,message
-12741,2026-09-16 00:04:14.418,Raised,im.fault,IM-01,im01.faultAlarm,digital,,True,Critical,,注塑机报警：设备报警位置位
-13238,2026-09-16 00:04:26.435,Cleared,im.fault,IM-01,im01.faultAlarm,digital,,,,,
-24533,2026-09-16 00:08:45.961,Raised,env.highTemp,ENV-01,env01.roomTemp,high,27,28.5,High,,车间温度超过上限（27.0 ℃）
-26213,2026-09-16 00:09:23.980,Cleared,env.highTemp,ENV-01,env01.roomTemp,high,,,,,

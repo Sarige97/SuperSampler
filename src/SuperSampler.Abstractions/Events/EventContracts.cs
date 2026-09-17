@@ -50,6 +50,10 @@ public enum EventLevel
 /// <summary>
 /// 投递模式。Inline 在发出方线程同步执行（契约：订阅者必须极快，如计数）；
 /// Queued 进入该订阅者专属的有界队列，由泵线程异步投递，慢消费者不拖累采集线程。
+/// <para>
+/// Inline **没有队列**：<c>Subscribe</c> 的 <c>queueCapacity</c>/<c>overflow</c> 对它无效（被忽略），
+/// 其 <see cref="ISubscription.Dropped"/> 恒为 0——同步直投没有「丢掉」这一状态（订阅者抛异常走 Faults）。
+/// </para>
 /// </summary>
 public enum DeliveryMode
 {
@@ -131,7 +135,13 @@ public interface ISubscription : IDisposable
     /// <summary>已成功投递给本订阅的事件数。</summary>
     long Delivered { get; }
 
-    /// <summary>因队列满按溢出策略丢弃的事件数。丢弃必须可见，绝不能静默。</summary>
+    /// <summary>
+    /// 丢弃计数：**两类都计入**（口径见 <c>InProcessEventBus</c> 类注释与 docs/03 第 4.4 节）——
+    /// ① 队列满时按溢出策略丢弃的事件；
+    /// ② **退订（<see cref="IDisposable.Dispose"/>）或总线停止时，队列里尚未投递的条目**。
+    /// 丢弃必须可见，绝不能静默：静默丢弃会让宿主的审计/报警漏记而不自知。
+    /// <see cref="DeliveryMode.Inline"/> 订阅没有队列，本项恒为 0。
+    /// </summary>
     long Dropped { get; }
 
     /// <summary>订阅者处理时抛异常的次数。订阅者的异常不会影响框架。</summary>
@@ -147,7 +157,7 @@ public interface IEventBusMetrics
     /// <summary>累计发出的事件数。</summary>
     long TotalEmitted { get; }
 
-    /// <summary>累计因队列满被丢弃的事件数（各订阅合计）。</summary>
+    /// <summary>累计丢弃的事件数（各订阅合计）：队列满丢弃 + 退订/停止时未投递的条目，口径同 <see cref="ISubscription.Dropped"/>。</summary>
     long TotalDropped { get; }
 
     /// <summary>累计订阅者处理异常次数。</summary>
@@ -172,6 +182,8 @@ public interface IEventBus
 
     /// <summary>
     /// 订阅单个事件（同步处理器）。TEvent 可以是具体类型，也可以是基接口（如 IErrorEvent）。
+    /// <paramref name="queueCapacity"/> 与 <paramref name="overflow"/> 只对 <see cref="DeliveryMode.Queued"/> 生效：
+    /// <see cref="DeliveryMode.Inline"/> 无队列，两者被**忽略**（也不校验容量，传 0 不抛）。
     /// </summary>
     ISubscription Subscribe<TEvent>(
         Action<IEventEnvelope<TEvent>> handler,
@@ -182,6 +194,7 @@ public interface IEventBus
     /// <summary>
     /// 批量订阅：攒满 maxBatchSize 或距批首事件超过 maxBatchDelay 就回调一次。
     /// 高频类别（Value / Comm）用这个，避免每事件一次回调。
+    /// 攒批依赖队列，故 <see cref="DeliveryMode.Inline"/> 无意义：传 Inline 一律按 Queued 处理。
     /// </summary>
     ISubscription SubscribeBatch<TEvent>(
         Action<IReadOnlyList<IEventEnvelope<TEvent>>> handler,

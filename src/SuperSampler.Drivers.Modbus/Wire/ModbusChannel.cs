@@ -112,7 +112,7 @@ public sealed class ModbusChannel : IDisposable
             {
                 WriteAll(request);
                 return wireFormat == WireFormat.Tcp
-                    ? ReadTcpResponse(unitId, txnId, timeoutMs)
+                    ? ReadTcpResponse(pdu[0], unitId, txnId, timeoutMs)
                     : ReadRtuResponse(pdu[0], unitId, timeoutMs);
             }
             catch (ModbusProtocolException)
@@ -260,6 +260,7 @@ public sealed class ModbusChannel : IDisposable
 
             tcp.ReceiveTimeout = 200;   // 单次读块短超时，总超时由外层按截止时间控制
             tcp.SendTimeout = _options.RequestTimeoutMs;
+            ApplyKeepAlive(tcp.Client); // 防「半开假死」第一道防线（docs/01 §6.3）
             _tcp = tcp;
             _stream = tcp.GetStream();
         }
@@ -272,6 +273,50 @@ public sealed class ModbusChannel : IDisposable
             tcp.Close();
             // 连接被拒/地址不可达 → 链路错误；SocketError.TimedOut → 超时（ADR D37）
             throw WrapIoFailure(ex, $"连接 {_options.Host}:{_options.Port} 失败");
+        }
+    }
+
+    // ─────────────── 系统级 TCP keepalive ───────────────
+
+    /// <summary>空闲多久（毫秒）开始探测。</summary>
+    private const int KeepAliveIdleMs = 10_000;
+
+    /// <summary>两次探测的间隔（毫秒）。</summary>
+    private const int KeepAliveIntervalMs = 3_000;
+
+    /// <summary>几次不通之后由系统关闭连接。</summary>
+    private const int KeepAliveRetryCount = 3;
+
+    /// <summary>IPPROTO_TCP 级 TCP_KEEPCNT 的底层数值（ws2ipdef.h = 16；.NET Core 3.0+ 的 TcpKeepAliveRetryCount 同值）。</summary>
+    private const int TcpKeepAliveRetryCountOption = 16;
+
+    /// <summary>
+    /// 系统级 TCP keepalive（防「半开假死」第一道防线，docs/01 §6.3）：
+    /// 空闲 10s 开始探测、每 3s 一次、3 次不通由系统关闭连接；关闭后的写会报 IO 错，
+    /// 上层据此自动升级为链路级退避。半开时应用层永远等不到错误，只有它能救回来。
+    /// net46 的可用 API：SO_KEEPALIVE + IOControl(KeepAliveValues) 设空闲与间隔；
+    /// 探测次数走 IPPROTO_TCP 的 TCP_KEEPCNT（Windows 10 1703+，旧系统设置失败时静默降级为系统默认次数）。
+    /// keepalive 只是「加分项」：设不上不能让连接建不起来。
+    /// </summary>
+    private static void ApplyKeepAlive(Socket socket)
+    {
+        try
+        {
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+
+            // SIO_KEEPALIVE_VALS：{ onoff, keepalivetime(ms), keepaliveinterval(ms) }，三个 32 位小端
+            var values = new byte[12];
+            BitConverter.GetBytes(1).CopyTo(values, 0);
+            BitConverter.GetBytes(KeepAliveIdleMs).CopyTo(values, 4);
+            BitConverter.GetBytes(KeepAliveIntervalMs).CopyTo(values, 8);
+            socket.IOControl(IOControlCode.KeepAliveValues, values, null);
+
+            socket.SetSocketOption(SocketOptionLevel.Tcp, (SocketOptionName)TcpKeepAliveRetryCountOption, KeepAliveRetryCount);
+        }
+        catch (Exception ex) when (ex is SocketException or NotSupportedException or ArgumentException
+                                       or ObjectDisposedException or PlatformNotSupportedException)
+        {
+            // 旧系统不支持 TCP_KEEPCNT（其空闲/间隔已由 IOControl 设上）：保持系统默认探测次数
         }
     }
 
@@ -386,7 +431,7 @@ public sealed class ModbusChannel : IDisposable
 
     // ─────────────── 接收 ───────────────
 
-    private byte[] ReadTcpResponse(byte unitId, ushort txnId, int timeoutMs)
+    private byte[] ReadTcpResponse(byte requestFunction, byte unitId, ushort txnId, int timeoutMs)
     {
         var header = ReadExact(_stream!, 7, timeoutMs);
         var responseTxn = (ushort)((header[0] << 8) | header[1]);
@@ -400,14 +445,14 @@ public sealed class ModbusChannel : IDisposable
         if (header[6] != unitId) throw new ModbusIoException($"从站号不匹配：期望 {unitId}，收到 {header[6]}");
 
         var pdu = ReadExact(_stream!, length - 1, timeoutMs);
-        ValidateFunctionByte(pdu);
+        ValidateFunctionByte(pdu, requestFunction);
         return pdu;
     }
 
     private byte[] ReadRtuResponse(byte requestFunction, byte unitId, int timeoutMs)
     {
         // RTU 无长度头：按功能码推导应答总长
-        var adu = ReadRtuAdu(requestFunction, timeoutMs);
+        var adu = ReadRtuAdu(timeoutMs);
         if (adu[0] != unitId) throw new ModbusIoException($"从站号不匹配：期望 {unitId}，收到 {adu[0]}");
 
         var expectedCrc = ModbusCrc16.Compute(adu, 0, adu.Length - 2);
@@ -416,11 +461,11 @@ public sealed class ModbusChannel : IDisposable
 
         var pdu = new byte[adu.Length - 3];
         Array.Copy(adu, 1, pdu, 0, pdu.Length);
-        ValidateFunctionByte(pdu);
+        ValidateFunctionByte(pdu, requestFunction);
         return pdu;
     }
 
-    private byte[] ReadRtuAdu(byte requestFunction, int timeoutMs)
+    private byte[] ReadRtuAdu(int timeoutMs)
     {
         // 先读 3 字节（unit, fc, 第三字节），再按 fc 推导剩余长度
         var head = ReadBytes(3, timeoutMs);
@@ -548,15 +593,24 @@ public sealed class ModbusChannel : IDisposable
         throw new ModbusIoException("通道未打开");
     }
 
-    private static void ValidateFunctionByte(byte[] pdu)
+    /// <summary>
+    /// 校验应答功能码：必须是请求功能码本身（正常应答）或 请求功能码 | 0x80（异常应答，异常码在下一字节）。
+    /// 功能码不符说明这不是本请求的应答（迟到应答/代理串帧/设备跑飞）——绝不能当成本请求的数据解析
+    /// （串数据比报错危险得多），判链路错并断开以丢弃可能残留在流里的错位字节。
+    /// </summary>
+    private static void ValidateFunctionByte(byte[] pdu, byte requestFunction)
     {
         if (pdu.Length == 0) throw new ModbusIoException("空应答");
 
-        if ((pdu[0] & 0x80) != 0)
+        if (pdu[0] == requestFunction) return;
+
+        if ((pdu[0] & 0x80) != 0 && pdu[0] == (byte)(requestFunction | 0x80))
         {
             if (pdu.Length < 2) throw new ModbusIoException("异常应答缺少异常码");
             throw new ModbusProtocolException(pdu[1]);
         }
+
+        throw new ModbusIoException($"功能码不匹配：期望 0x{requestFunction:X2}，收到 0x{pdu[0]:X2}");
     }
 }
 

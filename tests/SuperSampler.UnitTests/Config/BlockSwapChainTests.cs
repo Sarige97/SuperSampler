@@ -18,7 +18,6 @@ public class BlockSwapChainTests
 {
     private const string ConfigTemplate = """
         <SamplerConfig schemaVersion="3.0">
-          <ScanGroups><ScanGroup id="normal" /></ScanGroups>
           <Transports><Transport id="tcp1" host="127.0.0.1" /></Transports>
           <Devices><Device id="d1" __DEV__ /></Devices>
           __SET__

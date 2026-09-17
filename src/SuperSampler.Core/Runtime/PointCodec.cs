@@ -74,7 +74,17 @@ public static class PointCodec
     /// 永不抛异常：数据不足或非法编码返回 Bad 质量。
     /// </summary>
     public static PointValue Decode(RuntimePoint point, ushort[] registers, DateTimeOffset timestamp)
+        => Decode(point, registers, timestamp, out _);
+
+    /// <summary>
+    /// 解码一个点位，并同时给出**缩放前的原始数值**（<paramref name="rawValue"/>，脚本解码的输入，
+    /// 见 <c>ScriptDecoder</c>）：位点 = bool、位域 = ushort、raw 点 = ushort[]、
+    /// string/bcd/datetime = 该类型的解码结果、其余数值类型 = 缩放前数值。
+    /// 短帧（数据不足）时原始数值为 null——调用方按 Bad 处理，也不会去跑脚本。
+    /// </summary>
+    public static PointValue Decode(RuntimePoint point, ushort[] registers, DateTimeOffset timestamp, out object? rawValue)
     {
+        rawValue = null;
         try
         {
             if (registers.Length < point.Length)
@@ -86,7 +96,8 @@ public static class PointCodec
             if (point.Bit.HasValue)
             {
                 var bit = (registers[0] >> point.Bit.Value) & 1;
-                return PointValue.Good(bit == 1, timestamp);
+                rawValue = bit == 1;
+                return PointValue.Good(rawValue, timestamp);
             }
 
             if (point.BitFrom.HasValue && point.BitTo.HasValue)
@@ -94,69 +105,76 @@ public static class PointCodec
                 var width = point.BitTo.Value - point.BitFrom.Value + 1;
                 var mask = (1 << width) - 1;
                 var field = (registers[0] >> point.BitFrom.Value) & mask;
-                return PointValue.Good((ushort)field, timestamp);
+                rawValue = (ushort)field;
+                return PointValue.Good(rawValue, timestamp);
             }
 
             var rawU64 = Assemble(Reorder(registers, point.Swap));
 
-            // 先得到「原始数值」（缩放前），供 mapOn=raw 的枚举映射使用
-            object? rawValue;
+            // 先得到「原始数值」（缩放前），供 mapOn=raw 的枚举映射与脚本解码使用
+            object? raw;
             var isNumeric = true;
             switch (point.DataType)
             {
                 case RuntimeDataType.Bool:
-                    rawValue = rawU64 != 0;
+                    raw = rawU64 != 0;
                     isNumeric = false;
                     break;
                 case RuntimeDataType.Int16:
-                    rawValue = unchecked((short)rawU64);
+                    raw = unchecked((short)rawU64);
                     break;
                 case RuntimeDataType.UInt16:
-                    rawValue = (ushort)rawU64;
+                    raw = (ushort)rawU64;
                     break;
                 case RuntimeDataType.Int32:
-                    rawValue = unchecked((int)rawU64);
+                    raw = unchecked((int)rawU64);
                     break;
                 case RuntimeDataType.UInt32:
-                    rawValue = (uint)rawU64;
+                    raw = (uint)rawU64;
                     break;
                 case RuntimeDataType.Int64:
-                    rawValue = unchecked((long)rawU64);
+                    raw = unchecked((long)rawU64);
                     break;
                 case RuntimeDataType.UInt64:
-                    rawValue = rawU64;
+                    raw = rawU64;
                     break;
                 case RuntimeDataType.Float32:
-                    rawValue = Int32BitsToSingle(unchecked((int)(uint)rawU64));
+                    raw = Int32BitsToSingle(unchecked((int)(uint)rawU64));
                     break;
                 case RuntimeDataType.Float64:
-                    rawValue = BitConverter.Int64BitsToDouble(unchecked((long)rawU64));
+                    raw = BitConverter.Int64BitsToDouble(unchecked((long)rawU64));
                     break;
                 case RuntimeDataType.String:
-                    rawValue = DecodeString(point, registers);
+                    raw = DecodeString(point, registers);
                     isNumeric = false;
                     break;
                 case RuntimeDataType.Bcd:
-                    rawValue = DecodeBcd(registers, point.BcdDigits);
-                    isNumeric = false;
+                    // BCD 的「类型解释」结果是一个**数值**（long），因此与其它数值类型一样要吃 Scale
+                    // （docs/01 §0.5 值处理管道：类型解释 → 原始数值 → Scale → 工程值）。
+                    // 此前误按非数值处理，导致 <Scale> 在 bcd 点上解码被静默忽略、
+                    // 而 Encode 却做逆缩放——读写不对称（findings D43）。
+                    raw = DecodeBcd(registers, point.BcdDigits);
                     break;
                 case RuntimeDataType.DateTime:
-                    rawValue = DecodeDateTime(point, registers);
+                    raw = DecodeDateTime(point, registers);
                     isNumeric = false;
                     break;
                 case RuntimeDataType.Raw:
                     var copy = new ushort[registers.Length];
                     Array.Copy(registers, copy, registers.Length);
+                    rawValue = copy;
                     return PointValue.Good(copy, timestamp);
                 default:
                     return PointValue.Bad("ss.reason.decode", timestamp);
             }
 
+            rawValue = raw;
+
             // 缩放：仅数值类型；有 Scale 才产出工程值，否则保持原始类型
-            object? engineering = rawValue;
+            object? engineering = raw;
             if (isNumeric && point.Scale != null)
             {
-                var rawDouble = Convert.ToDouble(rawValue, CultureInfo.InvariantCulture);
+                var rawDouble = Convert.ToDouble(raw, CultureInfo.InvariantCulture);
                 engineering = point.Scale.Apply(rawDouble);
             }
 
@@ -191,17 +209,24 @@ public static class PointCodec
             bytes[(i * 2) + 1] = (byte)(registers[i] & 0xFF);
         }
 
-        var encoding = GetEncoding(point.StringEncoding);
-        var text = encoding.GetString(bytes);
-
+        // 补齐口径（docs/01 §4.3）：按配置的补齐字节（0x00/0x20…）与补齐侧裁剪。
+        // 裁剪在**字节层**做：先裁再按 encoding 解码，多字节编码（UTF-8/GBK）不会被截出半个字符。
+        var start = 0;
+        var end = bytes.Length;
         if (point.StringTrimNull)
         {
-            var end = text.IndexOf('\0');
-            if (end >= 0) text = text.Substring(0, end);
-            text = text.TrimEnd(' ');
+            var pad = (byte)point.StringPadding;
+            if (point.StringPadLeft)
+            {
+                while (end > start && bytes[end - 1] == pad) end--;     // 靠左：裁尾部补齐
+            }
+            else
+            {
+                while (start < end && bytes[start] == pad) start++;     // 靠右：裁头部补齐
+            }
         }
 
-        return text;
+        return GetEncoding(point.StringEncoding).GetString(bytes, start, end - start);
     }
 
     internal static Encoding GetEncoding(string name)
@@ -250,7 +275,7 @@ public static class PointCodec
             case "unixms":
             {
                 // 毫秒时间戳必然超出 32 位（2^32 ms ≈ 49.7 天），故 unixms 定为 4 字（64 位）；
-                // 兼容历史 2 字配置：只给 2 字时按 32 位解（会失真，配置校验已按 4 字推导字长）。
+                // 短帧降级：设备/窗口只给到 2 字时按 32 位解（会失真，但比整点置坏更接近真值）。
                 var millis = registers.Length >= 4
                     ? (long)Assemble(Reorder(new ushort[] { registers[0], registers[1], registers[2], registers[3] }, point.Swap))
                     : registers.Length >= 2
@@ -303,7 +328,18 @@ public static class PointCodec
         var format = point.Format;
         if (format == null)
         {
-            return Convert.ToString(value.Value, CultureInfo.InvariantCulture) ?? nullText;
+            // 无 <Format> 时按值类型渲染：数组/字节块与「有 Format」时同一套可读文本，
+            // 其余保持 Invariant 直出（不引入小数位/千分位等格式策略）。
+            // 此前一律走 Convert.ToString → raw 点的 ushort[] 显示成 "System.UInt16[]"（无意义的类型名）。
+            switch (value.Value)
+            {
+                case ushort[] words:
+                    return FormatWords(words);
+                case byte[] bytes:
+                    return FormatBytes(bytes);
+                default:
+                    return Convert.ToString(value.Value, CultureInfo.InvariantCulture) ?? nullText;
+            }
         }
 
         // 枚举映射优先于数值格式
@@ -354,13 +390,9 @@ public static class PointCodec
             case DateTimeOffset dto:
                 return dto.ToString(format.Pattern ?? "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
             case byte[] bytes:
-                return BitConverter.ToString(bytes).Replace("-", string.Empty);
+                return FormatBytes(bytes);
             case ushort[] words:
-            {
-                var parts = new List<string>(words.Length);
-                foreach (var word in words) parts.Add("0x" + word.ToString("X4", CultureInfo.InvariantCulture));
-                return string.Join(" ", parts);
-            }
+                return FormatWords(words);
             case double d:
                 return d.ToString(format.Thousands ? "N" + format.Decimals : "F" + format.Decimals, CultureInfo.InvariantCulture);
             case float f:
@@ -368,12 +400,31 @@ public static class PointCodec
             case decimal m:
                 return m.ToString(format.Thousands ? "N" + format.Decimals : "F" + format.Decimals, CultureInfo.InvariantCulture);
             case IFormattable formattable:
-                return format.Thousands
-                    ? formattable.ToString("N0", CultureInfo.InvariantCulture)
+                // 整型工程值（ushort/int/long…）同样遵守 Format@decimals：
+                // 此前只认 thousands，`decimals="2"` 在整型点上被静默忽略（findings D44）。
+                if (format.Thousands)
+                {
+                    return formattable.ToString("N" + format.Decimals, CultureInfo.InvariantCulture);
+                }
+
+                return format.Decimals > 0
+                    ? formattable.ToString("F" + format.Decimals, CultureInfo.InvariantCulture)
                     : formattable.ToString(null, CultureInfo.InvariantCulture);
             default:
                 return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
         }
+    }
+
+    /// <summary>字节块的可读文本（大写十六进制连写，无分隔）。</summary>
+    private static string FormatBytes(byte[] bytes)
+        => BitConverter.ToString(bytes).Replace("-", string.Empty);
+
+    /// <summary>寄存器数组（raw 点的工程值）的可读文本：<c>0x1234 0x5678</c>。</summary>
+    private static string FormatWords(ushort[] words)
+    {
+        var parts = new List<string>(words.Length);
+        foreach (var word in words) parts.Add("0x" + word.ToString("X4", CultureInfo.InvariantCulture));
+        return string.Join(" ", parts);
     }
 
     /// <summary>编码：工程值 → 线上寄存器（含逆缩放与字序）。用于写点位。</summary>
@@ -384,6 +435,20 @@ public static class PointCodec
         if (point.DataType == RuntimeDataType.String)
         {
             return EncodeString(point, Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty);
+        }
+
+        // raw 点的工程值就是「该点位声明字长的线上寄存器」——原样写回（与 Decode 的 Raw 分支对称）
+        if (point.DataType == RuntimeDataType.Raw && value is ushort[] rawWords)
+        {
+            return EncodeRaw(point, rawWords);
+        }
+
+        // datetime 的线上表示按 DateTime@format 拼字（与 DecodeDateTime 严格对称：plc4/plc6 不参与字序，
+        // unixsec/unixms 走 Reorder 出字序）。此前没有这条分支，写可写 datetime 点会在运行期以
+        // InvalidCastException（Convert.ToDouble(DateTime)）被拒 → 只能读不能写。
+        if (point.DataType == RuntimeDataType.DateTime)
+        {
+            return EncodeDateTime(point, value);
         }
 
         if (point.DataType == RuntimeDataType.Bool)
@@ -406,10 +471,131 @@ public static class PointCodec
             return Reorder(SplitWords(direct, point.Length > 0 ? point.Length : 1), point.Swap);
         }
 
+        // BCD 的线上形态是**十进制字位**（每寄存器 4 位十进制），不是二进制值：
+        // 此前它落进通用二进制分支，写出去的是二进制数、与 DecodeBcd 完全不对称（findings D43 家族）。
+        if (point.DataType == RuntimeDataType.Bcd)
+        {
+            var wordCount = point.Length > 0 ? point.Length : SamplerConfigLoader.BcdWordCount(point.BcdDigits);
+            var engineering = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            var rawBcd = point.Scale != null ? point.Scale.Reverse(engineering) : engineering;
+            return EncodeBcd(rawBcd, wordCount, point.BcdDigits);
+        }
+
         var raw = ToRaw(point, Convert.ToDouble(value, CultureInfo.InvariantCulture));
         var words = SplitWords(raw, point.Length > 0 ? point.Length : 1);
         return Reorder(words, point.Swap);
     }
+
+    /// <summary>
+    /// 把工程值编成 BCD 寄存器：每寄存器 4 位十进制，高位寄存器在前、字内高半字节在前。
+    /// **不经 <see cref="Reorder"/>**：<see cref="DecodeBcd"/> 是按**线上寄存器顺序**读十进制位的
+    /// （BCD 的字节/字序由设备决定，框架只按读到的顺序取位），编码必须走同一条口径，
+    /// 否则声明 swap 的 BCD 点「写进去再读回来」会得到另一个数。plc4/plc6 的 datetime 同理。
+    /// <paramref name="digits"/> 声明有效位数（与解码的取模口径一致：超出部分从高位截去）。
+    /// </summary>
+    private static ushort[] EncodeBcd(double engineering, int wordCount, int digits)
+    {
+        var text = Math.Round(Math.Abs(engineering), MidpointRounding.AwayFromZero)
+            .ToString("F0", CultureInfo.InvariantCulture);
+
+        var total = Math.Max(1, wordCount) * 4;
+        if (digits > 0 && digits < 18 && text.Length > digits)
+        {
+            text = text.Substring(text.Length - digits);
+        }
+
+        if (text.Length > total) text = text.Substring(text.Length - total);
+        text = text.PadLeft(total, '0');
+
+        var words = new ushort[Math.Max(1, wordCount)];
+        for (var w = 0; w < words.Length; w++)
+        {
+            ushort word = 0;
+            for (var d = 0; d < 4; d++)
+            {
+                var digit = text[(w * 4) + d] - '0';
+                word = (ushort)((word << 4) | (digit & 0xF));
+            }
+
+            words[w] = word;
+        }
+
+        return words;
+    }
+
+    /// <summary>
+    /// raw 点的编码：工程值（<c>ushort[]</c>，即 <see cref="Decode(RuntimePoint, ushort[], DateTimeOffset)"/>
+    /// 交付的线上寄存器）原样写回，
+    /// 按点位声明字长补齐/截断（不足补 0）。raw 不参与字序换算——解码给的就是线上顺序。
+    /// </summary>
+    private static ushort[] EncodeRaw(RuntimePoint point, ushort[] words)
+    {
+        var count = Math.Max(point.Length > 0 ? point.Length : words.Length, 1);
+        var result = new ushort[count];
+        Array.Copy(words, result, Math.Min(words.Length, count));
+        return result;
+    }
+
+    /// <summary>
+    /// datetime 的编码（与 <see cref="DecodeDateTime"/> 逐格式对称）：
+    /// <c>plc6</c> = 年/月/日/时/分/秒，<c>plc4</c> = 年/月/日/时（两者直接按字序写，不解 swap，同解码）；
+    /// <c>unixsec</c> = 2 字 / <c>unixms</c> = 4 字（64 位，经 <see cref="Reorder"/> 出字序）。
+    /// 接受 <see cref="DateTime"/> / <see cref="DateTimeOffset"/> / 可解析的字符串。
+    /// </summary>
+    private static ushort[] EncodeDateTime(RuntimePoint point, object? value)
+    {
+        if (!TryToDateTime(value, out var moment))
+        {
+            throw new InvalidCastException("datetime 点位写入值必须是 DateTime/DateTimeOffset 或可解析的时间字符串，实际 "
+                + (value == null ? "null" : value.GetType().Name));
+        }
+
+        switch ((point.DateTimeFormat ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "unixsec":
+                return Reorder(SplitWords((ulong)UnixSecondsOf(moment), 2), point.Swap);
+
+            case "unixms":
+                return Reorder(SplitWords((ulong)UnixMillisecondsOf(moment), 4), point.Swap);
+
+            case "plc4":
+                return new[] { (ushort)moment.Year, (ushort)moment.Month, (ushort)moment.Day, (ushort)moment.Hour };
+
+            default: // plc6
+                return new[]
+                {
+                    (ushort)moment.Year, (ushort)moment.Month, (ushort)moment.Day,
+                    (ushort)moment.Hour, (ushort)moment.Minute, (ushort)moment.Second,
+                };
+        }
+    }
+
+    /// <summary>写入值 → 时刻：<c>DateTime</c>（Unspecified 按本机时区，与解码的 LocalDateTime 口径一致）/ <c>DateTimeOffset</c> / 字符串。</summary>
+    private static bool TryToDateTime(object? value, out DateTimeOffset moment)
+    {
+        switch (value)
+        {
+            case DateTimeOffset dto:
+                moment = dto;
+                return true;
+            case DateTime dt:
+                moment = new DateTimeOffset(dt.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(dt, DateTimeKind.Local)
+                    : dt);
+                return true;
+            case string text when DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var parsed):
+                moment = parsed;
+                return true;
+            default:
+                moment = default;
+                return false;
+        }
+    }
+
+    private static long UnixSecondsOf(DateTimeOffset moment) => moment.ToUnixTimeSeconds();
+
+    private static long UnixMillisecondsOf(DateTimeOffset moment) => moment.ToUnixTimeMilliseconds();
 
     private static bool IsIntegral(RuntimeDataType dataType)
         => dataType is RuntimeDataType.Int16 or RuntimeDataType.UInt16
@@ -493,8 +679,15 @@ public static class PointCodec
         var encoding = GetEncoding(point.StringEncoding);
         var bytes = encoding.GetBytes(text);
         var total = Math.Max(point.Length, 1) * 2;
+
+        // 与解码对称：按设备的补齐字节填充；靠右（left=false）时把文本顶到末尾
         var buffer = new byte[total];
-        Array.Copy(bytes, buffer, Math.Min(bytes.Length, total));
+        var pad = (byte)point.StringPadding;
+        for (var i = 0; i < total; i++) buffer[i] = pad;
+
+        var count = Math.Min(bytes.Length, total);
+        var start = point.StringPadLeft ? 0 : total - count;
+        Array.Copy(bytes, 0, buffer, start, count);
 
         var words = new ushort[total / 2];
         for (var i = 0; i < words.Length; i++)

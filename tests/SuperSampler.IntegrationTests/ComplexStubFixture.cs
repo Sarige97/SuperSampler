@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -43,9 +43,6 @@ public sealed class ComplexStubFixture : IDisposable
 {
     /// <summary>断路器公共口基址（2502-2505；1502/1503 已被 modbus_tcp_sim.py 占用，必须避开）。</summary>
     public const int PublicBasePort = 2502;
-
-    /// <summary>复杂桩镜像内部口基址（complex_sim.py 默认）。</summary>
-    public const int SimBasePort = 16002;
 
     /// <summary>端口数：P1/P2/P3 为 TCP、P4 为 rtuOverTcp。</summary>
     public const int PortCount = 4;
@@ -368,9 +365,6 @@ public sealed class ComplexStubFixture : IDisposable
 
     // ─────────────────────────── 端口基址 ───────────────────────────
 
-    /// <summary>内部口（直连镜像）：16002 / 16003 / 16004 / 16005。</summary>
-    public IReadOnlyList<int> InternalPorts => new[] { SimP1, SimP2, SimP3, SimP4 };
-
     /// <summary>公共口（经断路器）：2502 / 2503 / 2504 / 2505。</summary>
     public IReadOnlyList<int> PublicPorts() => Enumerable.Range(0, PortCount).Select(i => PublicBasePort + i).ToArray();
 
@@ -625,7 +619,7 @@ public sealed class ComplexStubFixture : IDisposable
         return path;
     }
 
-    /// <summary>生成 &lt;Point&gt; 元素；attrs 为附加属性串（如 scanGroup / enabled / unitId / swap），inner 为子元素串。</summary>
+    /// <summary>生成 &lt;Point&gt; 元素；attrs 为附加属性串（如 mode / intervalMs / enabled / unitId / swap），inner 为子元素串。</summary>
     public static string Point(string id, int address, string dataType, string attrs = "", string inner = "")
         => "<Point id=\"" + id + "\" address=\"" + address + "\" dataType=\"" + dataType + "\" " + attrs + ">" + inner + "</Point>";
 
@@ -718,12 +712,10 @@ public sealed class ComplexStubFixture : IDisposable
         private readonly List<long> _seqs = new();
         private readonly object _gate = new();
         private readonly ISubscription _subscription;
-        private readonly int? _capacity;
 
         public EventCollector(IEventBus bus, DeliveryMode mode = DeliveryMode.Queued,
             OverflowPolicy overflow = OverflowPolicy.DropOldest, int? capacity = null)
         {
-            _capacity = capacity;
             _subscription = bus.Subscribe<TEvent>(envelope =>
             {
                 lock (_gate)
@@ -734,9 +726,6 @@ public sealed class ComplexStubFixture : IDisposable
             }, mode, overflow, capacity);
         }
 
-        /// <summary>本订阅队列容量（用于丢弃计数断言）。</summary>
-        public int? Capacity => _capacity;
-
         public IReadOnlyList<TEvent> Items
         {
             get { lock (_gate) return _bodies.ToArray(); }
@@ -746,8 +735,6 @@ public sealed class ComplexStubFixture : IDisposable
         {
             get { lock (_gate) return _bodies.Count; }
         }
-
-        public long Dropped => _subscription.Dropped;
 
         public async Task<bool> WaitCountAsync(int atLeast, int timeoutMs = 8000)
             => await WaitUntilAsync(() => Count >= atLeast, timeoutMs).ConfigureAwait(false);
