@@ -21,9 +21,10 @@
 - **毫秒级调度**：毫秒轮询间隔 + 地址自动分组 + 块读，散点自动合并成一次通讯，IO 效率可控。
 - **断线韧性**：两级退避（设备级 / 链路级）+ TCP keepalive + `RetryDevice` / `RetryLink` 手动重试；
   断线期间不崩不卡，质量回退与恢复全部可见。
-- **报警引擎**：high / highLow / low / lowLow / digital 五种类型，支持 delay / deadband / latch + ack，
+- **报警引擎**：high / highHigh / low / lowLow / digital 五种类型，支持 delay / deadband / latch + ack，
   报警触发 / 恢复 / 确认三态事件。
-- **写管道四态**：`Succeeded / Failed / Indeterminate / Rejected` + 回读校验（verify）+ 范围 / 联锁 / 权限校验。
+- **写管道四态**：`Succeeded / Failed / Indeterminate / Rejected` + 回读校验（verify）+ 范围 / 类型容量 / 可写区校验；
+  联锁与角色权限由宿主负责（框架当前未实现）。
 - **事件驱动**：值变化、报警三态、写审计、退避、错误族全部走进程内事件总线（`Inline` / `Queued` 两种投递模式），
   宿主按需订阅，订阅者异常不影响框架。
 - **单 DLL 打包**：`dotnet build -c Release -p:EnableILRepack=true` 一键产出
@@ -49,8 +50,7 @@ SuperSampler/
 ├── src/
 │   ├── SuperSampler.Abstractions/      纯契约:PointValue / 错误 / 事件 / 门面接口
 │   ├── SuperSampler.Core/              引擎:配置加载校验 / 调度 / 编解码 / 报警 / 事件总线（含 ILRepack.targets）
-│   ├── SuperSampler.Drivers.Modbus/    Modbus 驱动（TCP / RTU / RTU-over-TCP）
-│   └── SuperSampler.Hosting/           宿主壳（当前为空壳）
+│   └── SuperSampler.Drivers.Modbus/    Modbus 驱动（TCP / RTU / RTU-over-TCP）
 ├── samples/
 │   └── InjectionLineMonitor/           net46 Console 示例宿主（全功能演示）
 ├── assets/
@@ -98,7 +98,7 @@ SuperSampler/
 </HostConfig>
 ```
 
-### 2. 15 行接入引擎
+### 2. 接入引擎（最小示例）
 
 ```csharp
 using SuperSampler.Abstractions.Events;
@@ -122,7 +122,7 @@ engine.Start();
 var detail = engine.GetValueDetail("PLC-1", "temp");   // PointValue: 值 + 质量 + 时间戳
 Console.WriteLine($"温度 = {detail.Value}，质量 = {detail.Quality}");
 
-// ⑥ 写值（走完整写管道：范围 / 联锁 / 权限 / 下发 / 回读校验）
+// ⑥ 写值（走完整写管道：范围 / 可写区校验 / 下发 / 回读校验）
 var result = await engine.SetValueAsync("PLC-1", "pressure", 150);
 
 // ⑦ 停止（Stop 后不可再 Start，需重建引擎）
@@ -144,6 +144,8 @@ engine.Stop();
 | [docs/配置XML说明.md](docs/配置XML说明.md) | 配置 XML 逐节点逐属性字段说明 + 校验规则 |
 | [docs/框架API说明.md](docs/框架API说明.md) | 门面 API（IDeviceManager / IModbusDebugTool）签名与语义 |
 | [docs/测试与验收/](docs/测试与验收/) | 测试计划与验收报告归档 |
+| [docs/框架用户可见面清单.md](docs/框架用户可见面清单.md) | 配置/API/事件/语义速查基准（维护对照） |
+| [docs/审计报告.md](docs/审计报告.md) | 文档审计记录（准确性/覆盖/可读性修正） |
 
 ---
 

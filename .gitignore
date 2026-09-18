@@ -17,3 +17,6 @@ _smoke/
 samples/InjectionLineMonitor/run/
 samples/InjectionLineMonitor/run5/
 samples/InjectionLineMonitor/run6/
+
+# 文档审计中间产物（不入库）
+_audit/
