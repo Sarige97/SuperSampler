@@ -21,6 +21,7 @@
 | `line.xml` | 宿主配置：3 条链路 / 5 台设备 / 145 点位 / 7 个块 / 2 条报警 / 2 个计算点 |
 | `breaker_map.json` | 断路器端口映射（= `complex_ports.json` 的公共口改到 2502-2505，避开其它测试用的 1502/1503） |
 | `ops.txt` | 操作脚本示例（非脚本模式时宿主会自造一条默认序列） |
+| `ops_long.txt` | 长稳脚本示例（30 分钟周期性操作，与 `ops.txt` 同语法） |
 | `i18n/ui_zh_CN.i18n`、`i18n/ui_en_US.i18n` | 文案与单位（`line.xml` 用 `${KEY}` 引用） |
 | `Program.cs` | 启动/主循环/优雅退出 |
 | `HostOptions.cs` | 命令行解析 |
@@ -85,7 +86,7 @@ cd D:/IT/SuperModbus/SuperSampler/samples/InjectionLineMonitor
 | `alarms.csv` | 报警三态（Raised/Cleared/Acknowledged） | `AlarmRaised/Cleared/AcknowledgedEvent` |
 | `writes.csv` | 写审计（四态、操作者） | `PointWrittenEvent` |
 | `errors.csv` | 错误族（分类/错误码/结构化上下文） | `IErrorEvent`（基接口订阅） |
-| `ops.csv` | 宿主动作结果（含 `WriteResult` 的 `VerifyMismatch` 与 `Readback`） | 门面返回值（事件里没有） |
+| `ops.csv` | 宿主动作结果（含 `WriteResult` 的 `VerifyMismatch` 与 `Readback`） | 门面返回值（`PointWrittenEvent` 同样携带这些字段，此处记门面四态完整结果） |
 | `resources.csv` | 每 30s 的线程数/句柄数/GC 后托管堆 | `Process` + `GC.GetTotalMemory(true)` |
 
 ## 5. 操作脚本语法
@@ -93,7 +94,7 @@ cd D:/IT/SuperModbus/SuperSampler/samples/InjectionLineMonitor
 ```
 <时间> <命令> <参数...>          # 时间从宿主启动算，s=秒（缺省）、m=分；# 开头是注释
 
-write <设备>/<点位> <值>         # 走完整写管道：可写性 → 范围 → 审计 → 下发 →（verify）回读
+write <设备>/<点位> <值>         # 走完整写管道：可写性 → 数据区 → 范围 → 类型容量 → 编码 → 下发 →（verify）回读
 write <点位> <值>                # 点位 id 全库唯一时可省设备前缀（脚本里更短）
 pulse <设备>/<点位>              # 点动：写 true，框架按 pulseMs 自动写回 false
 ack   <设备>/<点位> [报警id]      # 报警确认；省略报警 id 则确认该点位配置的全部报警
@@ -102,8 +103,9 @@ note  <文本>                     # 日志分隔说明
 ```
 
 写值按点位 `dataType` 转换（整型点允许写 `28.0` 这种小数文本，缩放由框架的 `Scale` 处理）。
+**写请求恒不重试**：写超时即 `Indeterminate`（绝不自动重发，由框架保证），与 `Retry@count` 无关，宿主无需自设重试为 0。
 值、`Write min/max`、报警 `limit` **一律是工程量**：`env01.acSetTemp` 是 `int16 + factor 0.1`，
-要写 28.0 ℃ 就写 `28.0`，写 `280` 会被范围校验拒掉（本样例第一版就写错了，见 §8）。
+要写 28.0 ℃ 就写 `28.0`，写 `280` 会被范围校验拒掉。
 
 ## 6. 样例剧情（`ops.txt` + 桩的真实行为）
 
@@ -124,82 +126,41 @@ note  <文本>                     # 日志分隔说明
 
 | 目录 | 场景 | 结论摘要 |
 |---|---|---|
-| `run/run1` | `ops.txt`，160s，无故障 | 值事件 6213 全 Good；报警 2 激活/2 清除/2 确认；写 13 次 = Succeeded 10 / **Failed 1** / Rejected 2；错误事件 0；线程 17→16、托管堆 +0.12 MB |
+| `run/run1` | `ops.txt`，160s，无故障 | 值事件 6213 全 Good；报警 2 激活/2 清除/2 确认；写 13 次 = Succeeded 10 / **Failed 1** / Rejected 2；错误事件 0；线程 18→17、托管堆 +0.10 MB（以 `run/run1/csv/resources.csv` 为准） |
 | `run/run2` | 断线演练：`refuse 3s` + `silent 5s`（2502 整口） | 质量 Good→Bad→Good 跃迁 58 条；错误事件 3（2 超时 + 1 链路）；宿主不崩不卡，恢复后全部 Good |
 | `run/run3` | `silent 10s` 期间写设定值 | `WriteResult = Indeterminate`（7.1s 后返回，框架不猜、不重写）；恢复后 Good |
-| `run/run4` | ①`refuse 8s` 期间写 ②停桩/起桩 | ①写最终 `Succeeded`（4.6s，跨重连重试）②写 `Indeterminate`，停桩期间质量滞后变 Bad，起桩后 2s 内回 Good |
+| `run/run4` | ①`refuse 8s` 期间写 ②停桩/起桩 | ①写超时后回读定论、确认已生效 → `Succeeded`（4.6s；写请求**恒不重发**）②写 `Indeterminate`，停桩期间质量滞后变 Bad，起桩后 2s 内回 Good |
 
 `run/run1/breaker_events.log` 是断路器侧事件提取（listen/offline/online/fault_set/conn_reject，共 80 条），
 用来与宿主侧时间线对齐；断路器原始 JSONL 逐帧日志很大（8.9MB/160s），已删除。
 
-## 8. 开发过程中遇到的框架摩擦点（本次交付重点）
+## 8. 已知限制（宿主须知）
 
-### 8.1 配置与文档/实现不一致（最费时间的一处）
+框架在这些地方有意不做，宿主需要自己补或自己把关；以下按当前实现列出的真实边界：
 
-**`Block@swap` 缺省 `word`，并覆盖 `PointSet/Defaults@swap`。**
-`Config/配置字段说明.md`（§「swap 兜底链」）写的是 `Point > PointSet/Defaults > Block（块内） > Device > Global`，
-但 `SamplerConfigLoader.Points.cs` 在块内点位未显式写 `swap` 时直接 `point.Swap = block.Swap`（`Block@swap` 缺省 `word`）
-并标记为「已显式声明」，Defaults 被跳过。实测后果：同一份配置里块内 `uint32/float32/float64` 全按 CDAB 解错
-（累计电能读成 15198453.76 kWh、float64 读成 `-7.1e-197`），而块外同类型点位（int32/float32/float64/datetime）全部正确——
-因为块内 `datetime(plc6)` 恰好逐字段解码、不受 swap 影响，掩盖了问题。**规避**：本样例给每个 `<Block>` 显式写 `swap="none"`。
-建议：或在加载器里让 `Defaults` 优先于 `Block`，或把 `Block@swap` 的缺省改成「继承」而不是 `word`，并同步文档。
+1. **门面不提供点位元数据枚举**：没有「枚举设备下所有点、看类型/区/地址/间隔与模式/单位/报警、按点名反查设备」的只读接口。
+   宿主可自行解析配置 `line.xml`，或直接引用 `SuperSampler.Core.Runtime.PointRegistry` 等 Core 类型
+   ——这是框架缺口、样例被迫为之（本样例的 `PointCatalog` 就是这么做的）。
+2. **无设备/链路在线状态查询门面**：断线时质量是逐窗口变 `Bad` 的（串行重试下滞后明显），没有「整机离线」的直接查询。
+   宿主用 `GetValueAge`（距上次成功采集的时长）配合质量判断，或订阅 `IErrorEvent` 自行推断。
+3. **`Write@permission` 未强制**：配置里可声明 `Write@permission`，但框架只解析不校验（角色授权未实现，
+   `ActingUser` 只用于审计记账）；是否允许写入由宿主自行把关。
+4. **无报警查询接口**：`AcknowledgeAlarmAsync` 只回 `Acknowledged/NotPending`，看不到 `AckPending`、
+   也拿不到「当前激活报警」清单；报警列表/确认状态/「已恢复未确认」视图要靠订阅报警事件自行维护
+   （本样例 `EventJournal.ActiveAlarms` 就是这么来的）。
+5. **点动 `pulseMs` 是同步等待**：写 `true` 后框架在同一写调用里等待 `pulseMs` 再写回 `false`，期间该设备的
+   写通道被占住；宿主若在 UI 线程同步等待会卡界面。
+6. **`latch` 的语义与直觉不同**：条件回落照样发 `AlarmCleared`、`Active` 照样清，`latch/ackRequired` 只是
+   「未确认前不得重触发」的门控；按「锁存=值还在但界面锁住」做界面会对不上。
+7. **陈旧判定要自己做**：`Quality@staleAfterMs` 只被加载器读取，框架不做陈旧标记（`GetValueDetail` 只给时间戳）；
+   本样例 `Dashboard` 自己按时间戳算，给 Good 但过期的点标 `~`。
+8. **计算点不进轮询、不发 `PointValueChangedEvent`**：计算点只在 `GetValue/GetValueDetail` 被调用时求值并回写缓存；
+   要显示/归档只能宿主定时读（本样例靠 2s 一屏的 `GetValueDetail` 顺带完成）。
+9. **`.NET Core` / `.NET 6` 宿主未验证**：样例与框架按 `net46` 构建与实测，其它目标框架的宿主未验证。
 
-### 8.2 必须宿主自己补的（框架有意不做，或门面没给）
-
-1. **点位元数据没有门面**：门面只有 `GetValue/GetValueDetail/SetValueAsync/AcknowledgeAlarmAsync`。
-   「枚举设备下所有点、看类型/区/地址/间隔与模式/单位/报警、按点名反查设备」全都得直接引用
-   `SuperSampler.Core.Runtime.PointRegistry`、`SamplerConfiguration` 这些 Core 内部类型（本样例的 `PointCatalog`）。
-   建议加一个只读元数据接口（如 `IPointCatalog`），否则每个宿主都会自己拼一套。
-2. **没有「设备/链路在线」状态**：断线时质量是**逐窗口**变 Bad 的，串行重试下滞后明显——
-   实测停桩后第一台设备的第一个块 21s 就报 `LinkError`，而同一设备的温度块 14s 后才变 Bad，其它设备更晚。
-   宿主想做「整机离线」横幅只能订阅 `IErrorEvent` 自己推断。建议门面或事件补设备级在线状态/事件。
-3. **写审计事件不带回读**：`PointWrittenEvent` 只有 `value/user/outcome/message`，
-   `VerifyMismatch`、`Readback`、错误码都在 `SetValueAsync` 的返回值里，且事件在返回前就已发出——
-   宿主想把「回读值」留在审计里只能自己再写一份（本样例落在 `ops.csv`）。
-4. **报警没有查询接口**：`AcknowledgeAlarmAsync` 只回 `Acknowledged/NotPending`，
-   既看不到 `AckPending`，也拿不到「当前激活报警」清单。报警列表、确认状态、「已恢复未确认」视图
-   都得宿主自己按事件维护（本样例 `EventJournal.ActiveAlarms` 就是这么来的）。
-5. **`latch` 的语义与直觉不同**：实现里条件回落照样发 `AlarmCleared`、`Active` 照样清，
-   `latch/ackRequired` 只是「未确认前不得重触发」的门控。实测：急停复位后 1s 内报警位再次置位，
-   因未确认而没有新的 `RAISED`；确认后 0.1s 立刻又 `RAISED`。按「锁存=值还在但界面锁住」去做界面会对不上。
-6. **陈旧判定要自己做**：`Quality@staleAfterMs` 只被加载器读取，框架不做陈旧标记（`GetValueDetail` 只给时间戳）。
-   本样例的 `Dashboard` 自己按时间戳算，并给 Good 但过期的点标 `~`。
-7. **没有「格式化任意 PointValue」的公开 API**：`WriteResult.Readback` 是工程值对象，
-   宿主想显示成和 `GetValue` 一样的字符串只能自己拼（本样例打印 `<值> <单位>[质量]`）。
-   顺带一个坑：**不能用 `GetValue` 显示回读值**——它读的是轮询缓存，长间隔（`intervalMs` 大）的点上可能是几秒前的旧值
-   （本样例第一版就把写入 235 显示成缓存的 220.0），必须用 `Readback` 本身。
-8. **计算点不发事件**：计算点只在 `GetValue/GetValueDetail` 被调用时求值并回写缓存，不进轮询、不发
-   `PointValueChangedEvent`（实测 `values.csv` 里没有 `im01.moldTempDev` / `env01.plantLoad` 的行）。
-   要显示/归档只能宿主定时读——本样例靠 2s 一屏的 `GetValueDetail` 顺带完成。
-
-### 8.3 接口不顺手 / 行为需要显式确认
-
-1. **`pulseMs` 是写管道里的同步 `Thread.Sleep`**：实测一次点动写调用耗时 804ms，期间该设备的写通道被占住；
-   自动写回 false 的那次写入没有审计事件、失败也不上报。宿主若在 UI 线程同步等待会卡界面。
-2. **写的重发取决于 `Retry@count`**：写路径把设备级重试用在写请求上。实测 `count=1` 时，
-   8 秒连接拒绝窗口内发出的写最终仍 `Succeeded`（耗时 4.6s，跨重连重试）；框架自己的
-   `C2_WriteTimeout_IsIndeterminate_AndWriteIsSentExactlyOnce` 用的是 `count=0` 才拿到 `Indeterminate`。
-   对「重复执行有副作用」的写命令（点动、置位、下发配方），宿主必须显式把重试设 0，
-   否则「写超时绝不自动重写」这条承诺在配置层就被削弱了。建议点位级给一个「此写不得重发」的开关。
-3. **BCD/datetime 只能读不能写**：`PointCodec.Encode` 没有这两类的分支——写 BCD 点会把数字当普通整数落字
-   （读回来语义就变了），写 datetime 会走 `Convert.ToDouble(DateTime)` 抛异常变成 `Rejected`。
-   本样例的 `dry01.batchBcd` 因此只读不写；建议要么补编码，要么在加载期对 `access=readwrite` 的 bcd/datetime 点位告警。
-4. **`Scale@mode="linear"` 会进 Warnings**：声明唯一受支持的值也被告警为「尚未实现」，
-   `AlarmClass@name/@color` 同理。Warnings 应被视为「提示」而非「缺陷」，宿主界面要能区分
-   （本样例的启动摘要里把 Warnings 单独列一行）。建议加载器只在取值**不受支持**时才告警。
-5. **门面 `GetValue` 对未知 id 抛 `KeyNotFoundException`**（设计如此，现场很好用），
-   但宿主脚本里点位名写错时要注意把它转成可读提示——本样例在 `PointCatalog.Resolve` 里统一包成中文错误。
-
-### 8.4 做得好的地方（下次照抄）
-
-- **质量三元组（值/质量/时间戳/原因）**：`GetValueDetail` 只读缓存、可高频调用，显示层写起来很省事；
-  非 Good 时 `GetValue` 返回 `nullText`、`GetValueDetail` 保留原因，两者分工清楚。
-- **按基接口订阅错误**：`Subscribe<IErrorEvent>` 一条订阅就收齐所有错误族（实测 3 条全收到），
-  新增错误类型不会漏统计。
-- **`VerifyMismatch` 语义**：写成功但设备把值改了（钳位）时返回 `Succeeded + VerifyMismatch=true`，
-  不误触发宿主自动重试，宿主只需提示——这个设计在真实设备上非常对。
-- **写四态**：`Rejected` 明确表示「未发通讯」，实测越上限/只读点两次都 0ms 返回，没有多余报文。
-- **事件总线**：每订阅者独立队列 + `Dropped/Faults` 可见，本样例 6 条订阅、6232 条事件、0 丢弃 0 异常。
+一点使用注意：门面 `GetValue` 对未知 id 抛 `KeyNotFoundException`（设计如此，配置错误尽早暴露），
+宿主脚本里点位名写错时要把异常转成可读提示；显示写回读值要用 `WriteResult.Readback` 本身，
+不要用 `GetValue`（它读轮询缓存，长间隔的点上可能是几秒前的旧值）。
 
 ---
 
