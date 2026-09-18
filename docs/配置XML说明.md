@@ -210,6 +210,8 @@ UNIT_C       = "℃"
 
 ## 7. `Transports`（管「怎么连」）
 
+> **TCP ⇄ RTU 只改这一个元素**：`variant` 决定承载——`tcp` 填 `host`/`port`；`rtu`（原生串口）改填 `portName` + 串口参数（下表"串口"列）；`rtuovertcp`（RTU 帧走 TCP，网关/调试）跟 TCP 一样填 `host`/`port`。`variant` 之外的属性（`enabled`/超时/`gapMs`/子元素 `Retry`）各种承载通用；**`<Device>`/`<PointSet>`/`<Point>` 与承载无关，一字不用改**（寄存器地址、类型、缩放、报警、写校验语义相同）。新手对照示例见 `docs/教程.md` §2.3.1。
+
 | 属性 | 适用 | 默认 | 说明 |
 |---|---|---|---|
 | id / variant | 全部 | — | variant：tcp \| rtuovertcp \| rtu（已实现）\| udp \| ascii（**未实现**：枚举合法，但按 TCP/MBAP 通道收发，写了进 `Warnings`）。串口服务器多数是 rtuovertcp 不是 tcp |
