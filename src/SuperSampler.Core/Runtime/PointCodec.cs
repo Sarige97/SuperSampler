@@ -97,7 +97,7 @@ public static class PointCodec
             {
                 var bit = (registers[0] >> point.Bit.Value) & 1;
                 rawValue = bit == 1;
-                return PointValue.Good(rawValue, timestamp);
+                return PointValue.Good(rawValue, timestamp, rawValue);
             }
 
             if (point.BitFrom.HasValue && point.BitTo.HasValue)
@@ -106,7 +106,7 @@ public static class PointCodec
                 var mask = (1 << width) - 1;
                 var field = (registers[0] >> point.BitFrom.Value) & mask;
                 rawValue = (ushort)field;
-                return PointValue.Good(rawValue, timestamp);
+                return PointValue.Good(rawValue, timestamp, rawValue);
             }
 
             var rawU64 = Assemble(Reorder(registers, point.Swap));
@@ -163,7 +163,7 @@ public static class PointCodec
                     var copy = new ushort[registers.Length];
                     Array.Copy(registers, copy, registers.Length);
                     rawValue = copy;
-                    return PointValue.Good(copy, timestamp);
+                    return PointValue.Good(copy, timestamp, copy);
                 default:
                     return PointValue.Bad("ss.reason.decode", timestamp);
             }
@@ -182,16 +182,16 @@ public static class PointCodec
             // NaN/±Inf 出现在工程量里意味着溢出、脏寄存器或未初始化，不是可信测量。
             if (engineering is double d)
             {
-                if (double.IsNaN(d)) return PointValue.Uncertain(engineering, "ss.reason.nan", timestamp);
-                if (double.IsInfinity(d)) return PointValue.Uncertain(engineering, "ss.reason.infinite", timestamp);
+                if (double.IsNaN(d)) return PointValue.Uncertain(engineering, "ss.reason.nan", timestamp, rawValue);
+                if (double.IsInfinity(d)) return PointValue.Uncertain(engineering, "ss.reason.infinite", timestamp, rawValue);
             }
             else if (engineering is float f)
             {
-                if (float.IsNaN(f)) return PointValue.Uncertain(engineering, "ss.reason.nan", timestamp);
-                if (float.IsInfinity(f)) return PointValue.Uncertain(engineering, "ss.reason.infinite", timestamp);
+                if (float.IsNaN(f)) return PointValue.Uncertain(engineering, "ss.reason.nan", timestamp, rawValue);
+                if (float.IsInfinity(f)) return PointValue.Uncertain(engineering, "ss.reason.infinite", timestamp, rawValue);
             }
 
-            return PointValue.Good(engineering, timestamp);
+            return PointValue.Good(engineering, timestamp, rawValue);
         }
         catch (Exception ex)
         {

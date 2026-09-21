@@ -255,6 +255,24 @@ public class CodecMatrixTests
     }
 
     [Fact]
+    public void Decode_exposes_both_engineering_value_and_pre_scale_origin_value()
+    {
+        // 用户场景：int16 + <Scale factor="0.1"/>，寄存器原始 2200
+        var point = Pt(p =>
+        {
+            p.DataType = RuntimeDataType.Int16;
+            p.Length = 1;
+            p.Scale = new ScaleConfig { Factor = 0.1 };
+        });
+
+        var decoded = PointCodec.Decode(point, new ushort[] { 0x0898 }, T);   // 0x0898 = 2200
+
+        Assert.True(decoded.IsGood, "应解码为 Good：" + decoded);
+        Assert.Equal(220.0, Assert.IsType<double>(decoded.Value), 10);        // 工程值（已缩放）
+        Assert.Equal((short)2200, Assert.IsType<short>(decoded.OriginValue)); // 协议侧缩放前原始值
+    }
+
+    [Fact]
     public void Dual_point_scale_maps_both_ends_and_reverse_is_inverse()
     {
         var scale = new ScaleConfig

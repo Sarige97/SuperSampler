@@ -20,13 +20,22 @@ public enum PointQuality
 }
 
 /// <summary>
-/// 点位值三元组：{值, 质量, 时间戳}。框架内一切消费方（界面、历史、报警、报表、导出）
+/// 点位值四元组：{值, 原始值, 质量, 时间戳}。框架内一切消费方（界面、历史、报警、报表、导出）
 /// 统一使用这个结构，不直接接触原始寄存器。不可变。
+/// <see cref="OriginValue"/> 是协议侧**缩放前**的原始值（类型解码后、Scale 之前），
+/// 计算点与通讯失败/离线点为 null。
 /// </summary>
 public readonly struct PointValue : IEquatable<PointValue>
 {
     /// <summary>工程值：bool / int / long / double / string / DateTime / byte[]，由点位 dataType 决定。</summary>
     public object? Value { get; }
+
+    /// <summary>
+    /// 协议侧**缩放前**原始值（= 脚本输入里的 rawValue）：
+    /// 数值类型 = 类型解码后未缩放的值（如 uint16 的 2200）；位点 = bool；位域 = ushort；
+    /// string/bcd/datetime = 各自解码结果；raw = ushort[]。计算点、通讯失败/离线点为 null。
+    /// </summary>
+    public object? OriginValue { get; }
 
     public PointQuality Quality { get; }
 
@@ -38,19 +47,20 @@ public readonly struct PointValue : IEquatable<PointValue>
     /// <summary>质量是否可信。界面、报警、历史都应先看这个。</summary>
     public bool IsGood => Quality == PointQuality.Good;
 
-    public PointValue(object? value, PointQuality quality, DateTimeOffset timestamp, string? reason = null)
+    public PointValue(object? value, PointQuality quality, DateTimeOffset timestamp, string? reason = null, object? originValue = null)
     {
         Value = value;
+        OriginValue = originValue;
         Quality = quality;
         Timestamp = timestamp;
         Reason = reason;
     }
 
-    public static PointValue Good(object? value, DateTimeOffset timestamp)
-        => new(value, PointQuality.Good, timestamp);
+    public static PointValue Good(object? value, DateTimeOffset timestamp, object? originValue = null)
+        => new(value, PointQuality.Good, timestamp, originValue: originValue);
 
-    public static PointValue Uncertain(object? value, string reason, DateTimeOffset timestamp)
-        => new(value, PointQuality.Uncertain, timestamp, reason);
+    public static PointValue Uncertain(object? value, string reason, DateTimeOffset timestamp, object? originValue = null)
+        => new(value, PointQuality.Uncertain, timestamp, reason, originValue);
 
     /// <summary>坏值：不带旧值。</summary>
     public static PointValue Bad(string reason, DateTimeOffset timestamp)
@@ -80,12 +90,16 @@ public readonly struct PointValue : IEquatable<PointValue>
         => Quality == other.Quality
            && Timestamp == other.Timestamp
            && string.Equals(Reason, other.Reason, StringComparison.Ordinal)
-           && Equals(Value, other.Value);
+           && Equals(Value, other.Value)
+           && Equals(OriginValue, other.OriginValue);
 
     public override bool Equals(object? obj) => obj is PointValue other && Equals(other);
 
     public override int GetHashCode()
-        => unchecked((Value?.GetHashCode() ?? 0) ^ ((int)Quality * 397) ^ Timestamp.GetHashCode());
+        => unchecked((Value?.GetHashCode() ?? 0)
+                     ^ ((int)Quality * 397)
+                     ^ Timestamp.GetHashCode()
+                     ^ (OriginValue?.GetHashCode() ?? 0));
 
     public override string ToString()
     {

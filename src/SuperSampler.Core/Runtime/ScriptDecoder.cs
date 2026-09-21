@@ -176,11 +176,11 @@ public sealed class ScriptDecoder
         // ADR D32：非有限浮点降级 Uncertain（值保留供排查，绝不当 Good）——脚本产出同样受这条门禁约束
         if (value is double d)
         {
-            if (double.IsNaN(d)) return PointValue.Uncertain(value, "ss.reason.nan", timestamp);
-            if (double.IsInfinity(d)) return PointValue.Uncertain(value, "ss.reason.infinite", timestamp);
+            if (double.IsNaN(d)) return PointValue.Uncertain(value, "ss.reason.nan", timestamp, rawValue);
+            if (double.IsInfinity(d)) return PointValue.Uncertain(value, "ss.reason.infinite", timestamp, rawValue);
         }
 
-        return PointValue.Good(value, timestamp);
+        return PointValue.Good(value, timestamp, rawValue);
     }
 
     /// <summary>
