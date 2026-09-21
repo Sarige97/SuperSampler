@@ -4,7 +4,7 @@
 把「按配置采集 + 解析成工程值 + 报警 + 写回 + 事件」打包成一个可嵌入的库。宿主只管界面、权限、存储与业务，
 通讯调度与数据质量由框架负责。
 
-[![version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/Sarige97/SuperSampler)
+[![version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/Sarige97/SuperSampler)
 [![.NET](https://img.shields.io/badge/.NET%20Framework-4.6-512BD4)](https://github.com/Sarige97/SuperSampler)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![tests](https://img.shields.io/badge/tests-1432%20passing-brightgreen)](docs/测试与验收/验收报告.md)
@@ -173,4 +173,4 @@ dotnet build samples/InjectionLineMonitor/InjectionLineMonitor.csproj -c Debug
 
 ## 许可
 
-MIT License。作者：Sarige97（© 2026）。本仓库附带 `LICENSE` 文件。
+MIT License。作者：Sarige97（© 2026）。本仓库附带 [`LICENSE`](LICENSE)（本框架）与 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)（**合并发布版内嵌的 Jint 的 MIT 声明**，符合其开源协议要求）。
