@@ -24,14 +24,45 @@
 **地址写法**：`Point@address` 默认 0 基协议地址；`addrFormat="plc"` 时用西门子式写法自动换算——
 `4xxxx → 保持寄存器（40001 起）`、`3xxxx → 输入寄存器`、`1xxxx → 离散输入`、`1..9999 → 线圈`。
 
-**关键枚举速查**（详情在各标签属性表）：
+**关键枚举速查**（每个枚举值代表什么，逐个说清；属性表里的「取值」写「见通用约定」即回到这几张表）：
 
-| 属性 | 取值 |
-|---|---|
-| `area`（数据区） | `coil`（线圈）/ `discrete`（离散输入）/ `input`（输入寄存器）/ `holding`（保持寄存器） |
-| `dataType`（类型） | `bool` / `int16` / `uint16` / `int32` / `uint32` / `int64` / `uint64` / `float32` / `float64` / `string` / `bcd` / `datetime` / `raw` |
-| `swap`（字序） | `none`（ABCD 大端）/ `byte`（BADC 字节交换）/ `word`（CDAB 字交换）/ `word_byte`（DCBA 小端） |
-| `access`（读写） | `read` / `write` / `readwrite` |
+**`dataType`（数据类型，13 种）**——决定一个点占几个寄存器、解出来是什么工程值：
+
+| dataType | 字长 | 工程值形态 | 典型用途 |
+|---|---|---|---|
+| `bool` | 1 位 | `bool` | 开关、状态、线圈 |
+| `int16` | 1 字 | `short`（有符号 16 位） | 带符号量，如温度（配 Scale ×0.1） |
+| `uint16` | 1 字 | `ushort`（无符号 16 位） | 计数、状态字 |
+| `int32` | 2 字 | `int` | 有符号 32 位 |
+| `uint32` | 2 字 | `uint` | 无符号 32 位（大累计值） |
+| `int64` | 4 字 | `long` | 有符号 64 位 |
+| `uint64` | 4 字 | `ulong` | 无符号 64 位 |
+| `float32` | 2 字 | `float` | 单精度浮点（压力/流量） |
+| `float64` | 4 字 | `double` | 双精度浮点 |
+| `string` | `length` 字 | `string` | 配方名、批号等文本 |
+| `bcd` | `⌈digits/4⌉` 字 | `long` | BCD 编码的数值（如生产批次号） |
+| `datetime` | 按格式（6/4/2/4 字） | `DateTime` | 时间戳 |
+| `raw` | `length` 字 | `byte[]`（线上 `ushort[]`） | 不做解析的原始寄存器块 |
+
+**`area`（数据区，4 种）**——Modbus 四区，决定用哪个功能码读写：
+
+| area | 读写 | 说明 |
+|---|---|---|
+| `coil` | 可读写 | 线圈（0 区），1 位/点，功能码 01/05/0F |
+| `discrete` | 只读 | 离散输入（1 区），1 位/点，功能码 02 |
+| `input` | 只读 | 输入寄存器（3 区），1 字/点，功能码 04 |
+| `holding` | 可读写 | 保持寄存器（4 区），1 字/点，功能码 03/06/10 |
+
+**`swap`（字序，4 种）**——多字值（≥2 字）的字节/字排列方式（单字值不受影响）：
+
+| swap | 排列 | 说明 |
+|---|---|---|
+| `none` | ABCD | 大端，高字节在前（标准 Modbus） |
+| `byte` | BADC | 每个字内的高低字节对调 |
+| `word` | CDAB | 字的顺序对调（国内设备常见） |
+| `word_byte` | DCBA | 字节和字都反（小端） |
+
+**`access`（读写权限，3 种）**：`read` 只读 / `write` 只写 / `readwrite` 可读写。
 
 ---
 
@@ -148,7 +179,7 @@
 
 | 属性 | 含义 | 取值 | 默认 | 必填 | 备注 |
 |---|---|---|---|---|---|
-| `onCommError` | 通讯失败时的质量 | `bad` / `offline` / `uncertain` | bad | 否 | |
+| `onCommError` | 通讯失败时点位质量 | `bad`（不可用）/ `offline`（链路离线）/ `uncertain`（可疑，值可能仍可用） | bad | 否 | 值按 `onCommErrorValue` 处置 |
 | `onCommErrorValue` | 通讯失败时保留还是清空值 | `keepLast`（保留旧值）/ `null`（清空） | keepLast | 否 | |
 | `staleAfterMs` | 陈旧参考时长（毫秒） | ≥0 的整数 | 5000 | 否 | 框架不做陈旧判定，宿主用 `GetValueAge` + 此值自己判 |
 
@@ -210,10 +241,10 @@
 | `host` / `port` | TCP 目标地址/端口 | IP + 1..65535 | — / 502 | TCP 时 ✅ | `rtu` 串口不需要 |
 | `portName` | 串口名（如 `COM3`） | 字符串 | — | `rtu` 时 ✅ | |
 | `baudRate` | 波特率 | ≥1 的整数 | 9600 | 否 | |
-| `dataBits` | 数据位 | 5..8 | 8 | 否 | 现场仪表常为 7 |
-| `parity` | 校验 | `none` / `even` / `odd` / `mark` / `space` | none | 否 | 仪表常为 Even |
-| `stopBits` | 停止位 | `one` / `onepointfive` / `two` | one | 否 | |
-| `handshake` | 流控 | `none` / `xonxoff` / `rtscts` / `dtrdsr` | none | 否 | |
+| `dataBits` | 每字节数据位数 | 5..8（整数） | 8 | 否 | 现场仪表常为 7 |
+| `parity` | 校验位 | `none`（无校验）/ `even`（偶校验）/ `odd`（奇校验）/ `mark`（校验位恒 1）/ `space`（校验位恒 0） | none | 否 | 现场仪表常为 Even |
+| `stopBits` | 停止位个数 | `one`（1 位）/ `onepointfive`（1.5 位）/ `two`（2 位） | one | 否 | |
+| `handshake` | 流控方式 | `none`（无）/ `xonxoff`（XON/XOFF 软件流控）/ `rtscts`（RTS/CTS 硬件流控）/ `dtrdsr`（DTR/DSR 硬件流控） | none | 否 | |
 | `dtr` / `rts` | 流控信号 | `true`/`false` | false | 否 | RS485 用**自动流向**转换器（框架不做每帧 RTS/DE 翻转） |
 | `connectTimeoutMs` | 连接超时（毫秒） | ≥1 | 3000 | 否 | |
 | `requestTimeoutMs` | 通道发送超时（毫秒） | ≥1 | 1000 | 否 | 每请求超时由 `Device@requestTimeoutMs` 决定 |
@@ -239,7 +270,7 @@
 | `transport` | 挂哪条链路 | 链路 id | — | ✅ | 必须存在 |
 | `unitId` | 从站号 | 0..255 整数 | 1 | 否 | 别写字符串 "01" |
 | `pointSet` | 读哪张点表 | 点表 id | — | ✅ | |
-| `swap` | 设备级字序（被点位覆盖） | 四种 swap | 继承 Global | 否 | |
+| `swap` | 设备级字序（被点位覆盖） | `none`/`byte`/`word`/`word_byte`（含义见通用约定·swap 全解） | 继承 Global | 否 | |
 | `requestTimeoutMs` | 每请求超时（毫秒） | ≥1 | 1000 | 否 | 覆盖全局 |
 | `generateDiagnostics` | 自动生成诊断点位 | `true`/`false` | — | 否 | **未实现**，写了进告警 |
 
@@ -263,11 +294,11 @@
 
 | 属性 | 含义 | 取值 | 默认 | 必填 |
 |---|---|---|---|---|
-| `area` | 默认数据区 | 四种 area | — | 否 |
-| `dataType` | 默认类型 | 十三种 dataType | — | 否 |
-| `swap` | 默认字序 | 四种 swap | — | 否 |
+| `area` | 默认数据区 | `coil`/`discrete`/`input`/`holding`（含义见通用约定·area 全解） | — | 否 |
+| `dataType` | 默认类型 | `bool`/`int16`/`uint16`/`int32`/`uint32`/`int64`/`uint64`/`float32`/`float64`/`string`/`bcd`/`datetime`/`raw`（含义见通用约定·dataType 全解） | — | 否 |
+| `swap` | 默认字序 | `none`/`byte`/`word`/`word_byte`（含义见通用约定·swap 全解） | — | 否 |
 | `unitId` | 默认从站号 | 0..255 | — | 否 |
-| `access` | 默认读写 | `read`/`write`/`readwrite` | — | 否 |
+| `access` | 默认读写权限 | `read`（只读）/ `write`（只写）/ `readwrite`（可读写） | — | 否 |
 
 ### PointSet/Blocks → Block（显式块）
 
@@ -280,11 +311,11 @@
 | `id` | 块标识 | 字符串 | — | ✅ | 供 `TriggerBlockReadAsync` 用 |
 | `start` | 起始地址（0 基） | ≥0 | — | ✅ | |
 | `count` | 寄存器/位数量 | ≥1，≤ 地址组上限 | — | ✅ | |
-| `area` | 数据区 | 四种 area | holding | 否 | |
+| `area` | 数据区 | `coil`/`discrete`/`input`/`holding`（含义见通用约定·area 全解） | holding | 否 | |
 | `intervalMs` | 轮询间隔（毫秒） | ≥50 | 继承全局 | 否 | |
-| `mode` | 模式 | `auto`/`onDemand`/`once` | auto | 否 | |
+| `mode` | 采集模式 | `auto`（周期读）/ `onDemand`（手动触发）/ `once`（启动读一次直到成功） | auto | 否 | |
 | `unitId` | 从站号 | 0..255 | 设备 unitId | 否 | |
-| `swap` | 字序 | 四种 swap | 继承 | 否 | |
+| `swap` | 字序 | `none`/`byte`/`word`/`word_byte`（含义见通用约定·swap 全解） | 继承 | 否 | |
 | `enabled` | 是否启用 | `true`/`false` | true | 否 | |
 
 ### PointSet/Points → Point（点位：读什么、怎么解）
@@ -300,13 +331,13 @@
 | `area` | 数据区 | `coil`/`discrete`/`input`/`holding` | holding | 否 | |
 | `address` | 协议地址（0 基） | ≥0 整数 | — | ✅ | `addrFormat="plc"` 时按通用约定换算 |
 | `length` | 有效字长 | 0（按类型推导）或正整数 | 0 | 否 | 写 0 报错；与类型推导不一致报错 |
-| `dataType` | 类型 | 十三种 dataType | uint16 | 否 | |
-| `swap` | 字序 | 四种 swap | 继承链 | 否 | 多字值才受影响 |
+| `dataType` | 类型 | `bool`/`int16`/`uint16`/`int32`/`uint32`/`int64`/`uint64`/`float32`/`float64`/`string`/`bcd`/`datetime`/`raw`（含义见通用约定·dataType 全解） | uint16 | 否 | |
+| `swap` | 字序 | `none`/`byte`/`word`/`word_byte`（含义见通用约定·swap 全解） | 继承链 | 否 | 多字值才受影响 |
 | `bit` | 取哪位 | 0..15 | — | 否 | bool/整字点取位 |
 | `bitRange` | 取位段 | `"from-to"`，0≤from≤to≤15 | — | 否 | 如 `"4-7"` |
 | `intervalMs` | 轮询间隔（毫秒） | ≥50 | 继承全局 | 否 | `once` 模式不得写 |
-| `mode` | 模式 | `auto`/`onDemand`/`once` | auto | 否 | auto 周期读；onDemand 手动触发；once 启动读一次直到成功 |
-| `access` | 读写 | `read`/`write`/`readwrite` | read | 否 | |
+| `mode` | 采集模式 | `auto`（按 `intervalMs` 周期读，默认）/ `onDemand`（不进轮询计划，只由 `TriggerOnDemandRead` 手动触发）/ `once`（启动后读一次，失败按退避重试直到成功一次） | auto | 否 | `once` 不得同时写 `intervalMs` |
+| `access` | 读写权限 | `read`（只读）/ `write`（只写）/ `readwrite`（可读写） | read | 否 | 只读点不能带 `<Write>` |
 | `unitId` | 覆盖从站号 | 0..255 | 设备 unitId | 否 | |
 | `enabled` | 是否启用 | `true`/`false` | true | 否 | |
 | `template` | 引用 PointTemplates | 模板 id | — | 否 | |
@@ -325,7 +356,7 @@
 | `rawLow`/`rawHigh`/`scaledLow`/`scaledHigh` | 双点线性映射（四值齐备时优先于 factor/offset） | 有限数 | — | 否 | 如 `0..10000 → -50.0..200.0` |
 | `mode` | 缩放模式 | `linear`（当前只支持它） | linear | 否 | 写 `twopoint` 等只告警 |
 
-`Clamp`（钳制）：`mode` = `none`/`low`/`high`/`both`；`low`/`high`（别名 `min`/`max`）为钳制边界。
+`Clamp`（钳制）：`mode` = `none`（不钳）/ `low`（只钳下限，低于 `low` 就压到 `low`）/ `high`（只钳上限，高于 `high` 就压到 `high`）/ `both`（上下都钳）；`low`/`high`（别名 `min`/`max`）为钳制边界。
 
 #### Point/Format（显示格式）
 
@@ -338,7 +369,7 @@
 | `decimals` | 小数位 | 0..15 | 0 | 否 |
 | `prefix` / `suffix` | 前后缀 | 字符串 | — | 否 |
 | `thousands` | 千分位 | `true`/`false` | false | 否 |
-| `mapOn` | 映射基于工程值还是 raw | `engineering`/`raw` | engineering | 否 |
+| `mapOn` | `Map` 值→文本映射按哪个值来查 | `engineering`（按缩放后的工程值查）/ `raw`（按原始寄存器值查） | engineering | 否 |
 | `pattern` | 时间格式（仅 DateTime 点） | 格式串 | — | 否 |
 
 `Map/Item`：`key`（值）+ 文本（如报警码 `0→无`、`1→油温过高`）；布尔点键为 `true`/`false`。
@@ -389,7 +420,7 @@
 
 | 属性 | 含义 | 取值（字长） | 默认 | 必填 |
 |---|---|---|---|---|
-| `format` | 时间格式 | `plc6`（6 字：年/月/日/时/分/秒）/ `plc4`（4 字）/ `unixsec`（2 字，秒）/ `unixms`（4 字，毫秒） | plc6 | 否 |
+| `format` | 时间格式 | `plc6`（6 字，年/月/日/时/分/秒 各 1 字，常见 PLC 格式）/ `plc4`（4 字，年/月/日/时）/ `unixsec`（2 字，Unix 秒）/ `unixms`（4 字，Unix 毫秒） | plc6 | 否 |
 
 #### Point/Script（脚本解码）
 
@@ -401,7 +432,7 @@
 |---|---|---|---|---|---|
 | `language` | 脚本语言 | `js` | js | 否 | 只支持 js |
 | `timeoutMs` | 超时（毫秒） | >0 | 取 Global/Script | 否 | 超时置 Bad |
-| `onError` | 失败处置 | `markBad` | 取 Global/Script | 否 | |
+| `onError` | 脚本失败处置 | `markBad`（失败时点位质量置 Bad） | 取 Global/Script | 否 | 当前只支持 markBad |
 
 #### Point/Alarm（报警）
 
