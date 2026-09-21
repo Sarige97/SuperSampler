@@ -50,7 +50,7 @@ var detail = mgr.GetValueDetail("Mold01", "mold.temp");
 | # | 签名 | 一句话语义 |
 |---|---|---|
 | 1 | `string GetValue(string deviceId, string pointId)` | 解析后的**显示字符串**（缩放/枚举映射/前后缀/i18n 已完成）；质量非 Good 一律返回 `Global@nullText`，绝不把旧值当好值显示 |
-| 2 | `PointValue GetValueDetail(string deviceId, string pointId)` | 完整三元组 `{值, 质量, 时间戳}`；**读实时缓存，不发起任何通讯**，可高频调用（计算点例外：按需实时求值一次表达式/脚本，仍不发通讯） |
+| 2 | `PointValue GetValueDetail(string deviceId, string pointId)` | 完整四元组 `{值, 原始值, 质量, 时间戳}`；**读实时缓存，不发起任何通讯**，可高频调用（计算点例外：按需实时求值一次表达式/脚本，仍不发通讯） |
 | 3 | `Task<WriteResult> SetValueAsync(string deviceId, string pointId, object? value, CancellationToken ct = default)` | 基础写入，走完整写管道：可写性 → 数据区 → 范围 → 类型容量 → 编码 → 下发 →（`verify=true` 时）回读；无 user 重载以内置身份 `Local` 记审计 |
 | 4 | `Task<WriteResult> SetValueAsync(string deviceId, string pointId, object? value, ActingUser user, CancellationToken ct = default)` | 带操作者身份的写入：`ActingUser` 用于**审计记账**（写审计与报警确认事件带操作者名，由宿主认证后传入）；**角色授权未实现**——`Write@permission` 当前不生效，是否允许写入由宿主自行把关 |
 | 5 | `Task<AlarmAckResult> AcknowledgeAlarmAsync(string deviceId, string pointId, string alarmId, CancellationToken ct = default)` | 确认报警：清 AckPending → 报警回到可重触发状态 → 发 `AlarmAcknowledgedEvent`；`alarmId` 与 `AlarmRaisedEvent.AlarmId` 一致（点位未写 `Alarm@id` 时 = `"pointId#type"`） |
@@ -69,7 +69,7 @@ var detail = mgr.GetValueDetail("Mold01", "mold.temp");
   若用写审计做「停机上账」，必须在停机前把在途写做完。
 
 ```csharp
-// 读显示串 + 读三元组（按质量分支处理）
+// 读显示串 + 读四元组（按质量分支处理）
 string text  = mgr.GetValue("Mold01", "mold.temp");          // 质量非 Good → nullText
 PointValue pv = mgr.GetValueDetail("Mold01", "mold.pressure");
 if (pv.IsGood) { /* 用 pv.Value */ } else { /* 置灰 / 判联锁 */ }
@@ -132,12 +132,13 @@ if (retry.Outcome == ManualRetryOutcome.Succeeded) { /* 退避已归零 */ }
 
 ## 4. 值模型：`PointValue` 与质量四态
 
-`PointValue` 是框架内一切消费方（界面、历史、报警、报表、导出）统一使用的三元组
-**`{值, 质量, 时间戳}`**，语义对齐 OPC UA：值永远伴随质量与时间戳，三者不可分割。不可变结构体。
+`PointValue` 是框架内一切消费方（界面、历史、报警、报表、导出）统一使用的四元组
+**`{值, 原始值, 质量, 时间戳}`**，语义对齐 OPC UA：值永远伴随质量与时间戳，三者不可分割。不可变结构体。
 
 | 成员 | 说明 |
 |---|---|
 | `object? Value` | 工程值：`bool` / `int` / `long` / `double` / `string` / `DateTime` / `byte[]`，由点位 dataType 决定 |
+| `object? OriginValue` | 协议侧**缩放前**的原始值（类型解码后、`Scale` 之前，等于脚本输入里的 `rawValue`）；数值点位=未缩放值（如 uint16 的 `2200`）、位点=`bool`、位域=`ushort`、字符串/BCD/时间=各自解码结果、raw=`ushort[]`；**计算点与通讯失败/离线点为 `null`** |
 | `PointQuality Quality` | 质量四态（见下表） |
 | `DateTimeOffset Timestamp` | 采集/产生时间 |
 | `string? Reason` | 质量非 Good 时的坏值原因（**i18n key**）；Good 时为 null |
@@ -153,8 +154,8 @@ if (retry.Outcome == ManualRetryOutcome.Succeeded) { /* 退避已归零 */ }
 | `Bad` | 数据不可用（解析失败、被策略丢弃等），值可能是旧值或不存在 | 置灰；配合 `Reason` 显示原因 |
 | `Offline` | 链路或设备离线，值是旧的或不存在 | 明确标注离线状态 |
 
-**工厂方法**（用于构造，宿主一般只读不构造）：`PointValue.Good(value, ts)`、
-`PointValue.Uncertain(value, reason, ts)`、`PointValue.Bad(reason, ts)`（不带旧值）、
+**工厂方法**（用于构造，宿主一般只读不构造）：`PointValue.Good(value, ts, originValue = null)`、
+`PointValue.Uncertain(value, reason, ts, originValue = null)`、`PointValue.Bad(reason, ts)`（不带旧值）、
 `PointValue.Bad(reason, ts, lastValue)`（保留最后一次可信值）、`PointValue.Offline(ts)`。
 
 > 坏值原因码是 i18n key（如 `ss.quality.offline`、脚本失败时的 `ss.reason.scriptTimeout`），
@@ -164,6 +165,9 @@ if (retry.Outcome == ManualRetryOutcome.Succeeded) { /* 退避已归零 */ }
 PointValue pv = mgr.GetValueDetail("Mold01", "mold.temp");
 if (pv.IsGood && pv.TryGetValue<double>(out var v)) { chart.Feed(v); }
 else { statusLabel.Show(pv.Quality, pv.Reason); }
+
+// 需要协议侧的原始（缩放前）值时，读 OriginValue
+if (pv.OriginValue is short raw) { log.Write($"协议侧原始值={raw}"); }
 ```
 
 ---
