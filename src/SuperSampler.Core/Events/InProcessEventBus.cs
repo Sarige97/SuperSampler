@@ -520,7 +520,12 @@ public sealed class InProcessEventBus : IEventBus, IDisposable
 
                 try
                 {
-                    _handler(batch);
+                    // 交给 handler 的是**每批一份的独立快照**，不是上面这个复用缓冲：
+                    // batch 每轮 Clear/重填，若把同一实例交出去，宿主一旦延迟消费
+                    // （如 Dispatcher.BeginInvoke 里再枚举）就会撞"集合已修改"——
+                    // 接口声明的是 IReadOnlyList，宿主有权按只读快照理解并跨回调持有。
+                    // 每批一次小分配（≤ maxBatchSize 个引用），相对攒批省下的逐事件回调可忽略。
+                    _handler(new List<EventEnvelope<TEvent>>(batch));
                     CountDelivered(batch.Count);
                 }
                 catch (Exception ex)

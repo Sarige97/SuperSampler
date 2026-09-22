@@ -195,6 +195,8 @@ public interface IEventBus
     /// 批量订阅：攒满 maxBatchSize 或距批首事件超过 maxBatchDelay 就回调一次。
     /// 高频类别（Value / Comm）用这个，避免每事件一次回调。
     /// 攒批依赖队列，故 <see cref="DeliveryMode.Inline"/> 无意义：传 Inline 一律按 Queued 处理。
+    /// 交给 handler 的列表是**每批一份的独立快照**（不是内部复用缓冲），
+    /// 可安全跨回调持有 / 延迟消费（如先存下、再切到 UI 线程枚举）。
     /// </summary>
     ISubscription SubscribeBatch<TEvent>(
         Action<IReadOnlyList<IEventEnvelope<TEvent>>> handler,

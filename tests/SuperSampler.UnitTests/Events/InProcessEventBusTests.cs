@@ -214,6 +214,52 @@ public class InProcessEventBusTests : IDisposable
         lock (sizes) Assert.True(sizes.Count >= 1);
     }
 
+    /// <summary>
+    /// 回归：handler 拿到的 batch 是**每批独立快照**，可以只存引用、在回调返回之后再消费。
+    /// 修复前它是泵线程复用的同一个 List（每轮 Clear/重填），宿主把引用存下来延迟枚举
+    /// —— 典型如 WPF 里 `Dispatcher.BeginInvoke(() => foreach (batch))` —— 会读到被清空/换批的
+    /// 内容，或直接抛「集合已修改；可能无法执行枚举操作」。
+    /// </summary>
+    [Fact]
+    public void Batch_list_is_a_snapshot_safe_to_consume_after_callback_returns()
+    {
+        var captured = new List<IReadOnlyList<IEventEnvelope<TimeoutError>>>();
+        var received = 0;
+        var allDelivered = new ManualResetEventSlim(false);
+
+        using var sub = _bus.SubscribeBatch<TimeoutError>(
+            b =>
+            {
+                lock (captured)
+                {
+                    captured.Add(b);          // 只存引用：模拟宿主延迟消费
+                    received += b.Count;
+                    if (received >= 6) allDelivered.Set();
+                }
+            },
+            maxBatchSize: 2,                  // 6 条事件至少攒 3 批，保证复用缓冲被推进多轮
+            maxBatchDelay: TimeSpan.FromMilliseconds(30));
+
+        for (var i = 0; i < 6; i++) _bus.Emit(new TimeoutError(Info()));
+
+        Assert.True(allDelivered.Wait(TimeSpan.FromSeconds(5)), "未收齐 6 条");
+        Thread.Sleep(200);   // 让泵线程再转一轮：修复前这一步会把旧引用指向的缓冲清空
+
+        List<IReadOnlyList<IEventEnvelope<TimeoutError>>> batches;
+        lock (captured) batches = new List<IReadOnlyList<IEventEnvelope<TimeoutError>>>(captured);
+        Assert.True(batches.Count >= 2, "至少应攒出两批，否则覆盖不到复用缓冲场景");
+
+        // 延迟消费：回调早已返回，此刻枚举之前拿到的每批
+        var seqs = new List<long>();
+        foreach (var batch in batches)
+        {
+            foreach (var env in batch) seqs.Add(env.Seq);
+        }
+
+        seqs.Sort();
+        Assert.Equal(new long[] { 1, 2, 3, 4, 5, 6 }, seqs);   // 各批互不干扰：1..6 恰好各一次
+    }
+
     [Fact]
     public void Unsubscribe_stops_delivery()
     {
